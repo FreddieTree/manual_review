@@ -9,18 +9,31 @@ _abstracts_last_mtime = 0
 def load_abstracts(force_reload=False):
     global _abstracts_cache, _abstracts_last_mtime
     mtime = os.path.getmtime(ABSTRACTS_PATH)
-    if _abstracts_cache is None or force_reload or mtime != _abstracts_last_mtime:
+    if force_reload or _abstracts_cache is None or mtime != _abstracts_last_mtime:
         abstracts = []
         with open(ABSTRACTS_PATH, "r", encoding="utf-8") as f:
             for line in f:
                 if line.strip():
-                    abstracts.append(json.loads(line))
+                    a = json.loads(line)
+                    if "sentence_results" not in a or not isinstance(a["sentence_results"], list):
+                        a["sentence_results"] = []
+                    for s in a["sentence_results"]:
+                        if "assertions" not in s or not isinstance(s["assertions"], list):
+                            s["assertions"] = []
+                    abstracts.append(a)
         _abstracts_cache = abstracts
         _abstracts_last_mtime = mtime
     return _abstracts_cache
 
 def get_abstract_by_id(abs_id):
-    return next((a for a in load_abstracts() if str(a.get("pmid")) == str(abs_id)), None)
+    abst = next((a for a in load_abstracts() if str(a.get("pmid")) == str(abs_id)), None)
+    if abst is not None:
+        if "sentence_results" not in abst or not isinstance(abst["sentence_results"], list):
+            abst["sentence_results"] = []
+        for s in abst["sentence_results"]:
+            if "assertions" not in s or not isinstance(s["assertions"], list):
+                s["assertions"] = []
+    return abst
 
 def get_all_pmids():
     return set(str(a.get("pmid")) for a in load_abstracts())
@@ -41,7 +54,7 @@ def get_reviewer_logs(email):
             for line in f:
                 if line.strip():
                     log = json.loads(line)
-                    if log.get("reviewer_email") == email:
+                    if log.get("creator") == email or log.get("reviewer") == email:
                         logs.append(log)
     except Exception:
         pass
@@ -52,8 +65,8 @@ def get_stats_for_reviewer(email):
     assertion_adds = 0
     logs = get_reviewer_logs(email)
     for log in logs:
-        abs_ids.add(log.get("abstract_id"))
-        if log.get("type") == "user_add":
+        abs_ids.add(log.get("pmid") or log.get("abstract_id"))
+        if log.get("action") == "add":
             assertion_adds += 1
     total = len(abs_ids)
     commission = total * PER_ABSTRACT + assertion_adds * PER_ASSERTION_ADD
@@ -64,10 +77,11 @@ def get_stats_for_reviewer(email):
     }
 
 def assertion_exists(assertion_id):
-    """Check if an assertion with given id is already logged."""
     try:
         with open(REVIEW_LOG_PATH, "r", encoding="utf-8") as f:
             for line in f:
+                if not line.strip():
+                    continue
                 log = json.loads(line)
                 if log.get("assertion_id") == assertion_id:
                     return True
@@ -76,10 +90,11 @@ def assertion_exists(assertion_id):
     return False
 
 def get_log_by_assertion_id(assertion_id):
-    """Find a log by assertion id."""
     try:
         with open(REVIEW_LOG_PATH, "r", encoding="utf-8") as f:
             for line in f:
+                if not line.strip():
+                    continue
                 log = json.loads(line)
                 if log.get("assertion_id") == assertion_id:
                     return log

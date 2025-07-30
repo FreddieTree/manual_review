@@ -1,27 +1,49 @@
 {% extends "base.html" %}
 {% block title %}Login{% endblock %}
 {% block content %}
-<h2 class="mb-4 text-lg font-bold">Login</h2>
-<form method="post" class="space-y-4 max-w-md bg-white p-6 rounded border shadow">
-    <label for="name" class="block font-semibold">Name:</label>
-    <input type="text" name="name" required class="border px-2 py-1 rounded w-full mb-2">
-
-    <label for="email_prefix" class="block font-semibold">Email:</label>
-    <div class="flex items-center">
-        <input type="text" name="email_prefix" id="email_prefix" pattern="^[a-zA-Z0-9._%+-]+$" required
-            class="border px-2 py-1 rounded w-2/3" placeholder="yourid">
-        <span class="ml-1 text-gray-600">@bristol.ac.uk</span>
-    </div>
-    <input type="hidden" name="email" id="full_email">
-    <button type="submit" class="mt-4 w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">
-        Login
-    </button>
-</form>
+<div class="flex flex-col items-center justify-center min-h-[60vh]">
+    <form method="post" id="login-form" class="space-y-5 w-full max-w-md bg-white p-8 rounded-2xl border shadow-xl">
+        <h2 class="mb-4 text-2xl font-bold text-center text-blue-900">Manual Review Login</h2>
+        <div>
+            <label for="name" class="block font-semibold mb-1">Name</label>
+            <input type="text" name="name" id="name" required maxlength="32" autocomplete="on"
+                class="border px-3 py-2 rounded w-full focus:ring-2 focus:ring-blue-500 focus:outline-none transition"
+                placeholder="Your full name" />
+        </div>
+        <div>
+            <label for="email_prefix" class="block font-semibold mb-1">Bristol Email</label>
+            <div class="flex items-center">
+                <input type="text" name="email_prefix" id="email_prefix" pattern="^[a-zA-Z0-9._%+-]+$" maxlength="32"
+                    required autocomplete="username"
+                    class="border px-3 py-2 rounded-l w-2/3 focus:ring-2 focus:ring-blue-500 focus:outline-none transition"
+                    placeholder="yourid" />
+                <span
+                    class="inline-block bg-gray-100 px-3 py-2 rounded-r text-gray-700 border border-l-0 border-gray-300 select-none">@bristol.ac.uk</span>
+            </div>
+            <small class="text-gray-400 mt-1 block">Just enter your Bristol email prefix (e.g. <b>abc123</b>)</small>
+        </div>
+        <input type="hidden" name="email" id="full_email">
+        <button type="submit"
+            class="mt-5 w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition">
+            Login
+        </button>
+    </form>
+</div>
 <script>
-    // 自动组合全邮箱
-    document.querySelector("form").addEventListener("submit", function (e) {
-        const prefix = document.getElementById("email_prefix").value.trim();
-        document.getElementById("full_email").value = prefix + "@bristol.ac.uk";
+    document.addEventListener("DOMContentLoaded", function () {
+        // 自动聚焦姓名输入
+        document.getElementById("name").focus();
+        // 自动补全邮箱
+        document.getElementById("login-form").addEventListener("submit", function (e) {
+            const prefix = document.getElementById("email_prefix").value.trim();
+            if (!prefix) {
+                e.preventDefault();
+                document.getElementById("email_prefix").focus();
+                alert("Please enter your email prefix.");
+                return false;
+            }
+            document.getElementById("full_email").value = prefix + "@bristol.ac.uk";
+        });
     });
 </script>
 {% endblock %}

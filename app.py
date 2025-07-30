@@ -12,7 +12,6 @@ from utils import is_valid_email
 app = Flask(__name__)
 app.secret_key = SECRET_KEY
 
-# ------------- SESSION & LOGIN UTILS --------------
 def current_user():
     if "name" in session and "email" in session:
         return {
@@ -32,11 +31,8 @@ def require_login(func):
         return func(*args, **kwargs)
     return wrapper
 
-# ------------- ROUTES -------------
-
 @app.route("/", methods=["GET", "POST"])
 def login():
-    # Already logged in, assign new abstract if needed
     if "name" in session and "email" in session:
         if session.get("is_admin"):
             return redirect(url_for("admin"))
@@ -46,7 +42,6 @@ def login():
                 return render_template("no_more_tasks.html")
             session["current_abs_id"] = abs_id
         return redirect(url_for("review"))
-
     if request.method == "POST":
         name = request.form.get("name", "").strip()
         email = request.form.get("email", "").strip().lower()
@@ -87,7 +82,6 @@ def review():
         flash("Assigned abstract not found. Please contact admin.")
         return redirect(url_for("logout"))
     stats = get_stats_for_reviewer(session["email"])
-
     if request.method == "POST":
         from reviewer import audit_review_submission
         logs = audit_review_submission(
@@ -99,7 +93,6 @@ def review():
                 "email": session["email"]
             }
         )
-        # 日志写入，每条记录单独写入（便于仲裁/追溯）
         for log in logs:
             log_review_action(log)
         release_expired_locks()

@@ -10,3 +10,10 @@ __pycache__/
 *.csv
 generation_analysis/
 .env.*
+Miniconda3-latest-MacOSX-x86_64.sh
+*.tar.gz
+*.zip
+*.whl
+*.ckpt
+*.pt
+*.h5

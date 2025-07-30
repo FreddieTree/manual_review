@@ -15,7 +15,7 @@ ADMIN_NAME = os.environ.get("MANUAL_REVIEW_ADMIN_NAME", "Freddie")
 
 # ==== Data File Paths ====
 DATA_DIR = "data"
-ABSTRACTS_PATH = os.path.join(DATA_DIR, "abstracts.jsonl")
+ABSTRACTS_PATH = os.path.join(DATA_DIR, "sentence_level_gpt4.1.jsonl")
 REVIEW_LOGS_PATH = os.path.join(DATA_DIR, "review_logs.jsonl")
 EXPORTS_DIR = os.path.join(DATA_DIR, "exports")  # For future batch exports
 

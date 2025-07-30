@@ -16,8 +16,9 @@
         <li><span class="font-semibold">Estimated commission: £{{ stats.commission }}</span></li>
     </ul>
 </div>
-<form method="post">
+<form method="post" id="review-form">
     {% for sent in abstract.sentence_results %}
+    {% set sent_idx = loop.index0 %}
     <div class="mb-6 p-3 border rounded bg-gray-50">
         <p class="mb-2 font-semibold">
             Sentence {{ loop.index }}: <span class="text-gray-800">{{ sent.sentence }}</span>
@@ -35,31 +36,67 @@
             </thead>
             <tbody>
                 {% for assertion in sent.assertions %}
+                {% set ass_idx = loop.index0 %}
                 <tr class="border-t">
-                    <td>{{ assertion.subject }}</td>
-                    <td>{{ assertion.predicate }}</td>
-                    <td>{{ assertion.object }}</td>
-                    <td>{{ assertion.negation }}</td>
                     <td>
-                        <select name="review_{{ loop.parent.index0 }}_{{ loop.index0 }}" required>
+                        <input type="text" name="subject_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.subject }}"
+                            class="border rounded px-1 py-0.5 w-20" />
+                        <input type="hidden" name="subject_type_{{sent_idx}}_{{ass_idx}}"
+                            value="{{ assertion.subject_type }}">
+                    </td>
+                    <td>
+                        <input type="text" name="predicate_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.predicate }}"
+                            class="border rounded px-1 py-0.5 w-20" />
+                    </td>
+                    <td>
+                        <input type="text" name="object_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.object }}"
+                            class="border rounded px-1 py-0.5 w-20" />
+                        <input type="hidden" name="object_type_{{sent_idx}}_{{ass_idx}}"
+                            value="{{ assertion.object_type }}">
+                    </td>
+                    <td>
+                        <select name="negation_{{sent_idx}}_{{ass_idx}}">
+                            <option value="false" {% if not assertion.negation %}selected{% endif %}>False</option>
+                            <option value="true" {% if assertion.negation %}selected{% endif %}>True</option>
+                        </select>
+                    </td>
+                    <td>
+                        <select name="review_{{sent_idx}}_{{ass_idx}}" required>
                             <option value="">-</option>
                             <option value="accept">Accept</option>
                             <option value="uncertain">Uncertain</option>
                             <option value="reject">Reject</option>
+                            <option value="modify">Modify</option>
                         </select>
                     </td>
                     <td>
-                        <input type="text" name="comment_{{ loop.parent.index0 }}_{{ loop.index0 }}"
-                            class="border rounded px-1 py-0.5">
+                        <input type="text" name="comment_{{sent_idx}}_{{ass_idx}}" class="border rounded px-1 py-0.5">
                     </td>
                 </tr>
+                <input type="hidden" name="assertion_id_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.assertion_id }}">
                 {% endfor %}
+                <!-- 新增断言行 -->
+                <tr>
+                    <td><input type="text" name="useradd_subject_{{sent_idx}}" class="border rounded px-1 py-0.5 w-20"
+                            placeholder="Add Subject"></td>
+                    <td><input type="text" name="useradd_predicate_{{sent_idx}}" class="border rounded px-1 py-0.5 w-20"
+                            placeholder="Add Predicate"></td>
+                    <td><input type="text" name="useradd_object_{{sent_idx}}" class="border rounded px-1 py-0.5 w-20"
+                            placeholder="Add Object"></td>
+                    <td>
+                        <select name="useradd_negation_{{sent_idx}}" class="border rounded px-1 py-0.5">
+                            <option value="false">False</option>
+                            <option value="true">True</option>
+                        </select>
+                    </td>
+                    <td colspan="2">
+                        <input type="text" name="useradd_comment_{{sent_idx}}" class="border rounded px-1 py-0.5 w-24"
+                            placeholder="Comment (opt)">
+                    </td>
+                </tr>
             </tbody>
         </table>
-        <!-- 可以加“新增断言”按钮/表单（后续迭代） -->
     </div>
-    {% else %}
-    <p>No sentences found in this abstract.</p>
     {% endfor %}
     <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Submit Review</button>
 </form>
