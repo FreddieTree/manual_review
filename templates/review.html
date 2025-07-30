@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html><body>
+<h1>Review Page</h1>
+<p>Reviewer: {{ reviewer_name }}</p>
+<p>Abstract Title: {{ abstract.title }}</p>
+<ul>
+  {% for sent in abstract.sentences %}
+    <li>{{ sent.text }}</li>
+  {% endfor %}
+</ul>
+<form method="post">
+  <button type="submit">Submit (Not implemented)</button>
+</form>
+</body></html>
