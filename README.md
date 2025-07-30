@@ -3,34 +3,37 @@
 This is a Flask + Jinja2 based platform for double-blind human review of biomedical sentence-level assertions. It supports randomized task assignment, reviewer session control, assertion state logging, conflict arbitration, administrator dashboard, and contributor statistics.
 
 ## Project Structure
+
+```
 manual_review/
-├── app.py
-├── config.py
-├── models.py
-├── utils.py
-├── task_manager.py
-├── reviewer.py
-├── admin_tools.py
-├── requirements.txt
-├── README.md
-│
-├── static/
-│   ├── css/
-│   ├── js/
-│   └── images/
-│
-├── templates/
-│   ├── base.html
-│   ├── login.html
-│   ├── review.html
-│   ├── admin.html
-│   ├── no_more_tasks.html
-│   └── …
-│
-├── data/
-│   ├── abstracts.jsonl
-│   ├── review_logs.jsonl
-│   └── …
+├── app.py                     # Main Flask app, routes, and server
+├── config.py                  # Configuration constants (admin email, timeout, etc.)
+├── models.py                  # Data models: abstracts, assertions, logs
+├── utils.py                   # Helper utilities (e.g. match checker, logger)
+├── task_manager.py            # Task assignment, locking, timeout handling
+├── reviewer.py                # Review logic and interaction
+├── admin_tools.py             # Admin tools: arbitration, export, stats
+├── requirements.txt           # Python dependencies
+├── README.md                  # Project documentation
+
+├── static/                    # Static assets
+│   ├── css/                   # Custom stylesheets
+│   ├── js/                    # JavaScript for UI interactivity
+│   └── images/                # Icons, logos, etc.
+
+├── templates/                 # Jinja2 templates
+│   ├── base.html              # Shared layout template
+│   ├── login.html             # Login page
+│   ├── review.html            # Main reviewer interface
+│   ├── admin.html             # Admin dashboard
+│   ├── no_more_tasks.html     # Message for finished task pool
+│   └── ...
+
+├── data/                      # Input/output data files
+│   ├── abstracts.jsonl        # Original abstract dataset
+│   ├── review_logs.jsonl      # Review submission log
+│   └── ...
+```
 ## Features
 
 - **Reviewer login**: by name and @bristol.ac.uk email, no email verification.
@@ -55,6 +58,7 @@ manual_review/
 
    ```bash
    pip install -r requirements.txt
+   ```
 
 3.	(Optional) Configure environment variables in a .env file or modify config.py.
 
