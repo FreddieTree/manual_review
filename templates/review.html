@@ -1,14 +1,66 @@
-<!DOCTYPE html>
-<html><body>
-<h1>Review Page</h1>
-<p>Reviewer: {{ reviewer_name }}</p>
-<p>Abstract Title: {{ abstract.title }}</p>
-<ul>
-  {% for sent in abstract.sentences %}
-    <li>{{ sent.text }}</li>
-  {% endfor %}
-</ul>
+{% extends "base.html" %}
+{% block title %}Review Abstract{% endblock %}
+{% block content %}
+<h2 class="mb-3 text-lg font-bold">Review Abstract</h2>
+<div class="mb-2">
+    <strong>PMID:</strong> {{ abstract.pmid }}<br>
+    <strong>Title:</strong> {{ abstract.title or '' }}<br>
+    <strong>Journal:</strong> {{ abstract.journal or '' }}<br>
+    <strong>Year:</strong> {{ abstract.year or '' }}
+</div>
+<div class="my-3 p-3 bg-gray-100 rounded border">
+    <strong>Your Stats:</strong>
+    <ul class="list-disc ml-6">
+        <li>Total abstracts reviewed: {{ stats.reviewed_abstracts }}</li>
+        <li>Assertions added: {{ stats.assertions_added }}</li>
+        <li><span class="font-semibold">Estimated commission: £{{ stats.commission }}</span></li>
+    </ul>
+</div>
 <form method="post">
-  <button type="submit">Submit (Not implemented)</button>
+    {% for sent in abstract.sentence_results %}
+    <div class="mb-6 p-3 border rounded bg-gray-50">
+        <p class="mb-2 font-semibold">
+            Sentence {{ loop.index }}: <span class="text-gray-800">{{ sent.sentence }}</span>
+        </p>
+        <table class="w-full mb-2 text-sm border">
+            <thead>
+                <tr class="bg-gray-200">
+                    <th>Subject</th>
+                    <th>Predicate</th>
+                    <th>Object</th>
+                    <th>Negation</th>
+                    <th>Review</th>
+                    <th>Comment</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for assertion in sent.assertions %}
+                <tr class="border-t">
+                    <td>{{ assertion.subject }}</td>
+                    <td>{{ assertion.predicate }}</td>
+                    <td>{{ assertion.object }}</td>
+                    <td>{{ assertion.negation }}</td>
+                    <td>
+                        <select name="review_{{ loop.parent.index0 }}_{{ loop.index0 }}" required>
+                            <option value="">-</option>
+                            <option value="accept">Accept</option>
+                            <option value="uncertain">Uncertain</option>
+                            <option value="reject">Reject</option>
+                        </select>
+                    </td>
+                    <td>
+                        <input type="text" name="comment_{{ loop.parent.index0 }}_{{ loop.index0 }}"
+                            class="border rounded px-1 py-0.5">
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <!-- 可以加“新增断言”按钮/表单（后续迭代） -->
+    </div>
+    {% else %}
+    <p>No sentences found in this abstract.</p>
+    {% endfor %}
+    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Submit Review</button>
 </form>
-</body></html>
+{% endblock %}

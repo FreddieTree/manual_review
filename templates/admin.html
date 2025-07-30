@@ -1,4 +1,15 @@
-<!DOCTYPE html>
-<html><body>
-<h1>Admin Dashboard (To be implemented)</h1>
-</body></html>
+{% extends "base.html" %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<h2 class="mb-4 text-xl font-bold">Admin Dashboard</h2>
+<nav class="mb-6">
+    <a href="{{ url_for('admin') }}" class="mr-4">Overview</a>
+    <a href="{{ url_for('admin') }}#arbitration" class="mr-4">Arbitration Queue</a>
+    <a href="{{ url_for('admin') }}#stats" class="mr-4">Statistics</a>
+    <a href="{{ url_for('admin') }}#export">Export Logs/Reports</a>
+</nav>
+<div>
+    <p class="text-gray-600">Statistics and arbitration modules are under development.</p>
+    <!-- Future: Add arbitration tables, reviewer ranking, downloadable logs etc -->
+</div>
+{% endblock %}

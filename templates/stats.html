@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Your Review Stats{% endblock %}
+{% block content %}
+<h2>Your Review Statistics</h2>
+<p><strong>Reviewer:</strong> {{ reviewer_name }}</p>
+<ul>
+    <li>Total abstracts reviewed: {{ stats.reviewed_abstracts }}</li>
+    <li>Assertions added: {{ stats.assertions_added }}</li>
+    <li>Total commission earned: £{{ stats.commission }}</li>
+</ul>
+<a href="{{ url_for('review') }}" class="text-blue-700 underline">Back to Review</a>
+{% endblock %}

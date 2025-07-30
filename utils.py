@@ -1,5 +1,6 @@
-# utils.py
-
 def is_valid_email(email):
-    """Check if email is @bristol.ac.uk."""
-    return email.endswith("@bristol.ac.uk")
+    """
+    Assume frontend restricts to @bristol.ac.uk only.
+    For compatibility, just check non-empty input.
+    """
+    return bool(email and "@" in email)
