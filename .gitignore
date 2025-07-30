@@ -1,0 +1,12 @@
+__pycache__/
+*.pyc
+.env
+*.sqlite3
+*.log
+*.DS_Store
+.vscode/
+.ipynb_checkpoints/
+*.jsonl
+*.csv
+generation_analysis/
+.env.*

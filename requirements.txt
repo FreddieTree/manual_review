@@ -1,0 +1,9 @@
+flask
+jinja2
+pandas
+tqdm
+python-dotenv
+flask-session
+flask-wtf
+email-validator
+gunicorn
