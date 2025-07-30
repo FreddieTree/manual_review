@@ -72,6 +72,7 @@ The application will be available at http://localhost:5000
 For production, use Gunicorn:
 ```bash
 gunicorn app:app --bind 0.0.0.0:8000
+```
 
 ## Core Modules
 	•	app.py: Main Flask app, routes, session, and error handling.
@@ -86,11 +87,11 @@ gunicorn app:app --bind 0.0.0.0:8000
 	•	data/: Stores all input abstracts, logs, and review results.
 
 ## Workflow
-1.	Login: Reviewer enters name and @bristol.ac.uk email.
-	2.	Assignment: System draws an unreviewed abstract, locks it, presents for review.
-	3.	Review: Reviewer marks each assertion as accept/reject/uncertain or adds new assertion (with hard-match to original sentence).
-	4.	Submission: All assertions must be reviewed; system saves operation log and unlocks the abstract.
-	5.	Admin: Freddie logs in as admin, can view arbitration queue, global stats, reviewer rankings, and export logs/reports.
+    1.	Login: Reviewer enters name and @bristol.ac.uk email.
+    2.	Assignment: System draws an unreviewed abstract, locks it, presents for review.
+    3.	Review: Reviewer marks each assertion as accept/reject/uncertain or adds new assertion (with hard-match to original sentence).
+    4.	Submission: All assertions must be reviewed; system saves operation log and unlocks the abstract.
+    5.	Admin: Freddie logs in as admin, can view arbitration queue, global stats, reviewer rankings, and export logs/reports.
 
 ## Data & Log Export
 	•	All logs and status can be exported as JSONL or CSV via admin dashboard.
