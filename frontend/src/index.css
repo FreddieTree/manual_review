@@ -1,0 +1,8 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 可添加自定义全局样式 */
+body {
+  @apply bg-gray-50 text-gray-900;
+}
