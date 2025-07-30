@@ -16,17 +16,29 @@ manual_review/
 ├── requirements.txt           # Python dependencies
 ├── README.md                  # Project documentation
 
-├── static/                    # Static assets
-│   ├── css/                   # Custom stylesheets
-│   ├── js/                    # JavaScript for UI interactivity
-│   └── images/                # Icons, logos, etc.
+├── static/                    # Static files (Flask will serve your built frontend here)
+│   └── frontend/              # React app build output (after `npm run build`)
+│       ├── assets/            # Bundled static assets
+│       ├── index.html         # Entry point for the single-page app
+│       └── ...                # Other build files
 
-├── templates/                 # Jinja2 templates
-│   ├── base.html              # Shared layout template
-│   ├── login.html             # Login page
-│   ├── review.html            # Main reviewer interface
-│   ├── admin.html             # Admin dashboard
-│   ├── no_more_tasks.html     # Message for finished task pool
+├── frontend/                  # [NEW] React + Tailwind source code
+│   ├── src/
+│   │   ├── components/        # React UI components (Login, ReviewTable, AdminDashboard, etc.)
+│   │   ├── pages/             # Page components (LoginPage.jsx, ReviewPage.jsx, AdminPage.jsx, ...)
+│   │   ├── App.jsx            # Main App component
+│   │   ├── main.jsx           # Entry for React/Vite
+│   │   └── index.css          # Tailwind CSS imports
+│   ├── public/
+│   │   └── ...                # Static files for React app
+│   ├── tailwind.config.js     # Tailwind CSS config
+│   ├── postcss.config.js      # PostCSS config
+│   ├── package.json           # NPM dependencies and scripts
+│   └── ...                    # Vite/React config, etc.
+
+├── templates/                 # (Optionally keep for Flask API/SSR endpoints)
+│   ├── base.html
+│   ├── 404.html
 │   └── ...
 
 ├── data/                      # Input/output data files
