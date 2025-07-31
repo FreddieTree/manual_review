@@ -1,50 +1,30 @@
 # Manual Review Platform for Biomedical Assertion Auditing
 
-This is a Flask + Jinja2 based platform for double-blind human review of biomedical sentence-level assertions. It supports randomized task assignment, reviewer session control, assertion state logging, conflict arbitration, administrator dashboard, and contributor statistics.
+A high-integrity, extensible, and auditable platform for **double-review human curation of sentence-level biomedical assertions**. Designed for teams working with AI/NLP outputs (such as LLM-generated triples/assertions) in biomedical literature mining, this system ensures traceability, consensus, and quality control for structured knowledge creation.
 
 ## Project Structure
 
 ```
 manual_review/
-├── app.py                     # Main Flask app, routes, and server
-├── config.py                  # Configuration constants (admin email, timeout, etc.)
-├── models.py                  # Data models: abstracts, assertions, logs
-├── utils.py                   # Helper utilities (e.g. match checker, logger)
-├── task_manager.py            # Task assignment, locking, timeout handling
-├── reviewer.py                # Review logic and interaction
-├── admin_tools.py             # Admin tools: arbitration, export, stats
-├── requirements.txt           # Python dependencies
-├── README.md                  # Project documentation
-
-├── static/                    # Static files (Flask will serve your built frontend here)
-│   └── frontend/              # React app build output (after `npm run build`)
-│       ├── assets/            # Bundled static assets
-│       ├── index.html         # Entry point for the single-page app
-│       └── ...                # Other build files
-
-├── frontend/                  # [NEW] React + Tailwind source code
-│   ├── src/
-│   │   ├── components/        # React UI components (Login, ReviewTable, AdminDashboard, etc.)
-│   │   ├── pages/             # Page components (LoginPage.jsx, ReviewPage.jsx, AdminPage.jsx, ...)
-│   │   ├── App.jsx            # Main App component
-│   │   ├── main.jsx           # Entry for React/Vite
-│   │   └── index.css          # Tailwind CSS imports
-│   ├── public/
-│   │   └── ...                # Static files for React app
-│   ├── tailwind.config.js     # Tailwind CSS config
-│   ├── postcss.config.js      # PostCSS config
-│   ├── package.json           # NPM dependencies and scripts
-│   └── ...                    # Vite/React config, etc.
-
-├── templates/                 # (Optionally keep for Flask API/SSR endpoints)
+├── app.py              # Main Flask app (routing, session, login, page flow)
+├── config.py           # Configuration (admin credentials, session secret, timeouts)
+├── models.py           # Data IO: abstracts, logs, statistics, integrity checks
+├── reviewer.py         # Core review and assertion operation logic (add/edit/reject/etc.)
+├── task_manager.py     # Review task assignment, locking, timeout handling
+├── utils.py            # Helper functions (email validation, etc)
+├── data/
+│   ├── sentence_level_gpt4.1.jsonl   # Main abstract + assertion dataset (input)
+│   └── review_logs.jsonl             # All reviewer and admin action logs (append-only)
+├── templates/         # Jinja2 HTML templates for all pages (SSR, fallback/minimal UI)
 │   ├── base.html
-│   ├── 404.html
-│   └── ...
-
-├── data/                      # Input/output data files
-│   ├── abstracts.jsonl        # Original abstract dataset
-│   ├── review_logs.jsonl      # Review submission log
-│   └── ...
+│   ├── login.html
+│   ├── review.html
+│   ├── no_more_tasks.html
+│   ├── admin.html
+│   └── 404.html
+├── static/
+│   └── css/style.css  # Global CSS (minimal, optional if using Tailwind CDN)
+└── README.md          # You are here!
 ```
 ## Features
 

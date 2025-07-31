@@ -1,13 +1,12 @@
-export async function loginReviewer(name, email) {
-  const resp = await fetch("/api/login", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ name, email }),
-  });
-  if (resp.ok) return { ok: true };
-  const data = await resp.json().catch(() => ({}));
-  if (resp.status === 404 && data.noTask) return { noTask: true };
-  return { ok: false, message: data.message };
-}
+import axios from "axios";
 
-// 其他 fetch 见后端 API
+const api = axios.create({
+  baseURL: "http://localhost:5050/api",
+  withCredentials: true,
+});
+
+export const loginReviewer = (data) => api.post("/login", data).then(res => res.data);
+export const getAssignedAbstract = () => api.get("/assigned_abstract").then(res => res.data);
+export const submitReview = (data) => api.post("/submit_review", data).then(res => res.data);
+export const getAdminStats = () => api.get("/admin_stats").then(res => res.data);
+export const logout = () => api.post("/logout");
