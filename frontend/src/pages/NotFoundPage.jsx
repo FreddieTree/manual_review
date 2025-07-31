@@ -2,15 +2,25 @@ import { Link } from "react-router-dom";
 
 export default function NotFoundPage() {
   return (
-    <div className="text-center mt-48">
-      <div className="text-4xl font-extrabold text-red-500 mb-4">404</div>
-      <div className="text-lg text-gray-800 mb-4">Page Not Found</div>
+    <div className="flex flex-col items-center justify-center min-h-[70vh] bg-gradient-to-b from-red-50 via-white to-gray-100">
+      <div className="text-7xl font-extrabold text-red-400 mb-2 drop-shadow-md animate-pulse">
+        404
+      </div>
+      <div className="text-2xl font-bold text-gray-800 mb-2">
+        Page Not Found
+      </div>
+      <div className="text-gray-500 mb-8 text-base">
+        The page you’re looking for doesn’t exist or has been moved.
+      </div>
       <Link
         to="/"
-        className="inline-block px-5 py-2 bg-blue-500 text-white rounded hover:bg-blue-700 shadow"
+        className="inline-block px-8 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-800 shadow font-bold transition"
       >
-        Go Home
+        Go to Home
       </Link>
+      <div className="mt-10 text-xs text-gray-300">
+        If you believe this is a bug, please contact the system admin.
+      </div>
     </div>
   );
 }

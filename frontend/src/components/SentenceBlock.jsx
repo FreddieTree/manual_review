@@ -1,11 +1,21 @@
 import AssertionTable from "./AssertionTable";
 import AssertionForm from "./AssertionForm";
 
-export default function SentenceBlock({ idx, sentence, assertions, reviewState, onReviewChange, onCommentChange, onAddAssertion }) {
+export default function SentenceBlock({
+  idx,
+  sentence,
+  assertions,
+  reviewState,
+  onReviewChange,
+  onCommentChange,
+  onAddAssertion,
+  loadingAdd,
+}) {
   return (
-    <div className="mb-6 bg-gray-50 rounded-lg p-4 shadow">
-      <div className="font-semibold mb-2">
-        Sentence {idx + 1}: <span className="ml-2 text-gray-800">{sentence}</span>
+    <div className="mb-8 bg-gray-50 rounded-2xl p-5 shadow-lg border border-blue-100">
+      <div className="font-bold mb-3 text-blue-800 text-base">
+        Sentence {idx + 1}:
+        <span className="ml-2 text-gray-800 font-normal">{sentence}</span>
       </div>
       <AssertionTable
         assertions={assertions}
@@ -13,7 +23,9 @@ export default function SentenceBlock({ idx, sentence, assertions, reviewState, 
         onReviewChange={onReviewChange}
         onCommentChange={onCommentChange}
       />
-      <AssertionForm onAdd={a => onAddAssertion(idx, a)} />
+      <div className="mt-4">
+        <AssertionForm onAdd={a => onAddAssertion(idx, a)} loading={loadingAdd} />
+      </div>
     </div>
   );
 }

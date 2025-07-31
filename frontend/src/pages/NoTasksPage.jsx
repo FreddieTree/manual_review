@@ -2,17 +2,24 @@ import { Link } from "react-router-dom";
 
 export default function NoTasksPage() {
   return (
-    <div className="text-center mt-40">
-      <div className="text-2xl font-bold text-gray-800 mb-4">
-        🎉 All abstracts are fully reviewed!
+    <div className="flex flex-col items-center justify-center min-h-[70vh] bg-gradient-to-b from-blue-50 via-white to-blue-100">
+      <div className="text-5xl mb-4 animate-bounce">🎉</div>
+      <div className="text-2xl sm:text-3xl font-black text-emerald-700 mb-3 tracking-wide">
+        All abstracts are fully reviewed!
       </div>
-      <div className="text-gray-600 mb-6">
-        There are currently <b>no more abstracts</b> that need your review.<br />
-        Thank you for your valuable contributions!
+      <div className="text-gray-700 mb-8 text-base sm:text-lg">
+        <b>No more abstracts</b> need your review at this time.<br />
+        <span className="text-gray-500">Thank you for your valuable contributions to the project!</span>
       </div>
-      <Link to="/" className="inline-block px-6 py-2 bg-blue-600 text-white rounded shadow hover:bg-blue-700 font-semibold transition">
-        Back to Home
+      <Link
+        to="/"
+        className="inline-block px-7 py-2.5 bg-blue-700 text-white rounded-xl shadow-md font-bold text-base hover:bg-blue-900 hover:scale-105 transition"
+      >
+        ⬅️ Back to Home
       </Link>
+      <div className="mt-10 text-gray-400 text-xs">
+        Platform refreshes automatically as new abstracts become available.
+      </div>
     </div>
   );
 }

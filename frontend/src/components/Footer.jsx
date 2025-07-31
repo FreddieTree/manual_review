@@ -1,7 +1,8 @@
 export default function Footer() {
   return (
-    <footer className="bg-gray-100 text-center py-4 mt-8 text-gray-500 text-sm">
-      &copy; {new Date().getFullYear()} Manual Review Platform. All rights reserved.
+    <footer className="bg-gradient-to-r from-gray-100 to-blue-50 text-center py-4 mt-10 text-gray-400 text-sm rounded-t-xl shadow-inner border-t">
+      &copy; {new Date().getFullYear()} Biomedical Assertion Review Platform.
+      <span className="ml-2 text-gray-300">All rights reserved.</span>
     </footer>
   );
 }

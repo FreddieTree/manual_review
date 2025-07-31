@@ -3,12 +3,39 @@
 
 <head>
   <meta charset="UTF-8">
-  <title>Biomedical Manual Review Platform</title>
+  <title>Biomedical Assertion Manual Review Platform</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/favicon.svg">
+  <meta name="description" content="A professional platform for manual review of biomedical assertion extractions.">
+  <meta name="keywords" content="biomedical, assertion extraction, manual review, annotation, research, NLP">
+  <meta name="author" content="Bristol NLP Lab">
+  <meta name="theme-color" content="#2563eb" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="apple-touch-icon" href="/favicon.svg">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <!-- Google Fonts: Inter for modern academic style -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS: remove if using Vite plugin/locally compiled -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" />
+  <!-- Extra: Highlight academic, research, and cross-platform -->
+  <style>
+    html,
+    body {
+      font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    body {
+      background: linear-gradient(135deg, #f8fafc 0%, #e3edfa 80%);
+    }
+  </style>
 </head>
 
 <body>
+  <noscript>
+    <div style="padding:2rem;text-align:center;color:#b91c1c;font-weight:bold;">
+      This platform requires JavaScript to function properly.<br>
+      Please enable JavaScript in your browser settings.
+    </div>
+  </noscript>
   <div id="root"></div>
   <script type="module" src="/src/main.jsx"></script>
 </body>

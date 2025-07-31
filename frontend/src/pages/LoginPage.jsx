@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { loginReviewer } from "../api";
 
@@ -10,15 +10,16 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const nameRef = useRef(null);
 
-  // 聚焦第一个输入框
-  // useEffect(() => { nameRef.current?.focus(); }, []);
+  // 自动聚焦
+  useEffect(() => { nameRef.current?.focus(); }, []);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     const email = `${emailPrefix}@bristol.ac.uk`;
-    // 严格校验 name 只允许正常字符
+
+    // 校验姓名
     if (!name.trim() || !/^[a-zA-Z0-9\s\-'.]+$/.test(name)) {
       setError("Please enter your real name (letters only).");
       setLoading(false);
@@ -29,6 +30,7 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
+
     try {
       const res = await loginReviewer({ name, email });
       if (res.is_admin) {
@@ -39,39 +41,47 @@ export default function LoginPage() {
         navigate("/review");
       }
     } catch (err) {
-      setError(err?.message || "Login failed, please try again.");
+      setError(
+        err?.response?.data?.message ||
+        err?.message ||
+        "Login failed, please try again."
+      );
     }
     setLoading(false);
   };
 
   return (
-    <div className="min-h-[60vh] flex flex-col justify-center items-center px-3">
-      <div className="w-full max-w-md bg-white/80 rounded-2xl shadow-2xl px-8 py-9 border border-gray-100">
-        <h1 className="text-2xl sm:text-3xl font-bold mb-8 text-center text-blue-900 drop-shadow-sm">
-          <span className="inline-block align-middle mr-2">🔒</span>
-          Reviewer Login
-        </h1>
-        <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="min-h-[70vh] flex flex-col justify-center items-center px-3">
+      <div className="w-full max-w-md bg-white/90 rounded-3xl shadow-2xl px-10 py-11 border border-blue-100">
+        <div className="flex flex-col items-center mb-5">
+          <div className="text-4xl mb-1 animate-pulse">🔒</div>
+          <h1 className="text-2xl sm:text-3xl font-black mb-2 text-center text-blue-900 drop-shadow-sm tracking-wide">
+            Reviewer Login
+          </h1>
+          <div className="text-sm text-blue-400 mb-1">Biomedical Assertion Platform</div>
+        </div>
+        <form onSubmit={handleSubmit} className="space-y-7">
           <div>
-            <label htmlFor="name" className="block text-gray-600 font-medium mb-1">
+            <label htmlFor="name" className="block text-gray-700 font-bold mb-1">
               Name
             </label>
             <input
               ref={nameRef}
               id="name"
-              className="w-full border rounded-lg px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
+              className="w-full border rounded-xl px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-400 text-base transition"
               placeholder="Your Name"
               value={name}
               onChange={e => setName(e.target.value)}
               autoComplete="username"
               maxLength={40}
+              required
             />
           </div>
           <div>
-            <label htmlFor="emailPrefix" className="block text-gray-600 font-medium mb-1">
-              Email
+            <label htmlFor="emailPrefix" className="block text-gray-700 font-bold mb-1">
+              Bristol Email
             </label>
-            <div className="flex items-center rounded-lg overflow-hidden border bg-gray-50">
+            <div className="flex items-center rounded-xl overflow-hidden border bg-gray-50 focus-within:ring-2 focus-within:ring-blue-300">
               <input
                 id="emailPrefix"
                 className="flex-1 bg-transparent border-none px-3 py-2 focus:ring-0 focus:outline-none text-base"
@@ -84,7 +94,7 @@ export default function LoginPage() {
                 maxLength={32}
                 aria-label="Bristol email prefix"
               />
-              <span className="bg-gray-100 text-gray-500 px-2 text-sm font-mono"> @bristol.ac.uk </span>
+              <span className="bg-gray-100 text-gray-500 px-3 text-sm font-mono"> @bristol.ac.uk </span>
             </div>
           </div>
           {error &&
@@ -93,7 +103,7 @@ export default function LoginPage() {
             </div>
           }
           <button
-            className={`w-full py-2 rounded-lg font-semibold text-white text-base shadow transition
+            className={`w-full py-2 rounded-xl font-bold text-white text-base shadow transition
               ${loading
                 ? "bg-gray-400 cursor-not-allowed"
                 : "bg-blue-700 hover:bg-blue-800 active:bg-blue-900"
@@ -104,9 +114,13 @@ export default function LoginPage() {
             {loading ? "Logging in..." : "Login"}
           </button>
         </form>
-        <div className="mt-7 text-gray-400 text-xs text-center">
-          For authorized reviewers only. All operations are logged.
+        <div className="mt-7 text-gray-400 text-xs text-center italic">
+          For authorized reviewers only. All operations are permanently logged.
         </div>
+      </div>
+      <div className="mt-8 text-sm text-gray-500 text-center max-w-xs">
+        <b>Need access?</b> Contact the system admin.<br />
+        <span className="text-gray-400">© 2025 Bristol Biomedical Platform</span>
       </div>
     </div>
   );
