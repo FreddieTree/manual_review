@@ -1,103 +1,113 @@
 {% extends "base.html" %}
 {% block title %}Review Abstract{% endblock %}
 {% block content %}
-<h2 class="mb-3 text-lg font-bold">Review Abstract</h2>
-<div class="mb-2">
-    <strong>PMID:</strong> {{ abstract.pmid }}<br>
-    <strong>Title:</strong> {{ abstract.title or '' }}<br>
-    <strong>Journal:</strong> {{ abstract.journal or '' }}<br>
-    <strong>Year:</strong> {{ abstract.year or '' }}
-</div>
-<div class="my-3 p-3 bg-gray-100 rounded border">
-    <strong>Your Stats:</strong>
-    <ul class="list-disc ml-6">
-        <li>Total abstracts reviewed: {{ stats.reviewed_abstracts }}</li>
-        <li>Assertions added: {{ stats.assertions_added }}</li>
-        <li><span class="font-semibold">Estimated commission: £{{ stats.commission }}</span></li>
-    </ul>
-</div>
-<form method="post" id="review-form">
-    {% for sent in abstract.sentence_results %}
-    {% set sent_idx = loop.index0 %}
-    <div class="mb-6 p-3 border rounded bg-gray-50">
-        <p class="mb-2 font-semibold">
-            Sentence {{ loop.index }}: <span class="text-gray-800">{{ sent.sentence }}</span>
-        </p>
-        <table class="w-full mb-2 text-sm border">
-            <thead>
-                <tr class="bg-gray-200">
-                    <th>Subject</th>
-                    <th>Predicate</th>
-                    <th>Object</th>
-                    <th>Negation</th>
-                    <th>Review</th>
-                    <th>Comment</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for assertion in sent.assertions %}
-                {% set ass_idx = loop.index0 %}
-                <tr class="border-t">
-                    <td>
-                        <input type="text" name="subject_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.subject }}"
-                            class="border rounded px-1 py-0.5 w-20" />
-                        <input type="hidden" name="subject_type_{{sent_idx}}_{{ass_idx}}"
-                            value="{{ assertion.subject_type }}">
-                    </td>
-                    <td>
-                        <input type="text" name="predicate_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.predicate }}"
-                            class="border rounded px-1 py-0.5 w-20" />
-                    </td>
-                    <td>
-                        <input type="text" name="object_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.object }}"
-                            class="border rounded px-1 py-0.5 w-20" />
-                        <input type="hidden" name="object_type_{{sent_idx}}_{{ass_idx}}"
-                            value="{{ assertion.object_type }}">
-                    </td>
-                    <td>
-                        <select name="negation_{{sent_idx}}_{{ass_idx}}">
-                            <option value="false" {% if not assertion.negation %}selected{% endif %}>False</option>
-                            <option value="true" {% if assertion.negation %}selected{% endif %}>True</option>
-                        </select>
-                    </td>
-                    <td>
-                        <select name="review_{{sent_idx}}_{{ass_idx}}" required>
-                            <option value="">-</option>
-                            <option value="accept">Accept</option>
-                            <option value="uncertain">Uncertain</option>
-                            <option value="reject">Reject</option>
-                            <option value="modify">Modify</option>
-                        </select>
-                    </td>
-                    <td>
-                        <input type="text" name="comment_{{sent_idx}}_{{ass_idx}}" class="border rounded px-1 py-0.5">
-                    </td>
-                </tr>
-                <input type="hidden" name="assertion_id_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.assertion_id }}">
-                {% endfor %}
-                <!-- 新增断言行 -->
-                <tr>
-                    <td><input type="text" name="useradd_subject_{{sent_idx}}" class="border rounded px-1 py-0.5 w-20"
-                            placeholder="Add Subject"></td>
-                    <td><input type="text" name="useradd_predicate_{{sent_idx}}" class="border rounded px-1 py-0.5 w-20"
-                            placeholder="Add Predicate"></td>
-                    <td><input type="text" name="useradd_object_{{sent_idx}}" class="border rounded px-1 py-0.5 w-20"
-                            placeholder="Add Object"></td>
-                    <td>
-                        <select name="useradd_negation_{{sent_idx}}" class="border rounded px-1 py-0.5">
-                            <option value="false">False</option>
-                            <option value="true">True</option>
-                        </select>
-                    </td>
-                    <td colspan="2">
-                        <input type="text" name="useradd_comment_{{sent_idx}}" class="border rounded px-1 py-0.5 w-24"
-                            placeholder="Comment (opt)">
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+<div class="max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl border border-blue-100 p-8 mt-4">
+    <h2 class="text-2xl font-bold text-blue-900 mb-5 flex items-center gap-2">
+        <span>Abstract Review</span>
+        <span class="ml-2 px-2 py-1 rounded bg-blue-50 text-blue-800 text-xs">Manual QC</span>
+    </h2>
+    <div class="mb-4 p-4 rounded-lg bg-blue-50 border-l-4 border-blue-400 text-gray-800 shadow-sm">
+        <div class="font-semibold">PMID: <span class="font-mono">{{ abstract.pmid }}</span></div>
+        <div><b>Title:</b> {{ abstract.title or '' }}</div>
+        <div class="text-gray-600"><b>Journal:</b> {{ abstract.journal or '' }} ({{ abstract.year or '' }})</div>
     </div>
-    {% endfor %}
-    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700">Submit Review</button>
-</form>
+    <div class="mb-6 p-4 bg-gray-100 rounded-lg border flex flex-col gap-2">
+        <div class="font-bold text-gray-700">Your Stats</div>
+        <ul class="list-disc ml-7 text-gray-600">
+            <li>Total abstracts reviewed: <b>{{ stats.reviewed_abstracts }}</b></li>
+            <li>Assertions added: <b>{{ stats.assertions_added }}</b></li>
+            <li><span class="font-semibold text-blue-800">Estimated commission: £{{ stats.commission }}</span></li>
+        </ul>
+    </div>
+    <form method="post" id="review-form" class="space-y-7">
+        {% for sent in abstract.sentence_results %}
+        {% set sent_idx = loop.index0 %}
+        <div class="mb-6 p-3 border rounded-xl bg-gray-50 shadow-sm">
+            <div class="font-semibold mb-2">
+                <span class="bg-blue-100 px-2 py-1 rounded text-blue-700 text-xs mr-2">Sentence {{ loop.index }}</span>
+                <span class="text-gray-800">{{ sent.sentence }}</span>
+            </div>
+            <table class="w-full mb-2 text-sm border rounded shadow">
+                <thead>
+                    <tr class="bg-gray-200 text-gray-700">
+                        <th>Subject</th>
+                        <th>Predicate</th>
+                        <th>Object</th>
+                        <th>Negation</th>
+                        <th>Review</th>
+                        <th>Comment</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for assertion in sent.assertions %}
+                    {% set ass_idx = loop.index0 %}
+                    <tr class="border-t">
+                        <td>
+                            <input type="text" name="subject_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.subject }}"
+                                class="border rounded px-1 py-0.5 w-24" />
+                            <input type="hidden" name="subject_type_{{sent_idx}}_{{ass_idx}}"
+                                value="{{ assertion.subject_type }}">
+                        </td>
+                        <td>
+                            <input type="text" name="predicate_{{sent_idx}}_{{ass_idx}}"
+                                value="{{ assertion.predicate }}" class="border rounded px-1 py-0.5 w-24" />
+                        </td>
+                        <td>
+                            <input type="text" name="object_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.object }}"
+                                class="border rounded px-1 py-0.5 w-24" />
+                            <input type="hidden" name="object_type_{{sent_idx}}_{{ass_idx}}"
+                                value="{{ assertion.object_type }}">
+                        </td>
+                        <td>
+                            <select name="negation_{{sent_idx}}_{{ass_idx}}" class="border rounded px-1 py-0.5">
+                                <option value="false" {% if not assertion.negation %}selected{% endif %}>False</option>
+                                <option value="true" {% if assertion.negation %}selected{% endif %}>True</option>
+                            </select>
+                        </td>
+                        <td>
+                            <select name="review_{{sent_idx}}_{{ass_idx}}" required class="border rounded px-1 py-0.5">
+                                <option value="">-</option>
+                                <option value="accept">Accept</option>
+                                <option value="uncertain">Uncertain</option>
+                                <option value="reject">Reject</option>
+                                <option value="modify">Modify</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" name="comment_{{sent_idx}}_{{ass_idx}}"
+                                class="border rounded px-1 py-0.5" placeholder="(Optional)">
+                        </td>
+                    </tr>
+                    <input type="hidden" name="assertion_id_{{sent_idx}}_{{ass_idx}}"
+                        value="{{ assertion.assertion_id }}">
+                    {% endfor %}
+                    <!-- 新增断言行 -->
+                    <tr class="bg-green-50">
+                        <td><input type="text" name="useradd_subject_{{sent_idx}}"
+                                class="border rounded px-1 py-0.5 w-24" placeholder="Add Subject"></td>
+                        <td><input type="text" name="useradd_predicate_{{sent_idx}}"
+                                class="border rounded px-1 py-0.5 w-24" placeholder="Add Predicate"></td>
+                        <td><input type="text" name="useradd_object_{{sent_idx}}"
+                                class="border rounded px-1 py-0.5 w-24" placeholder="Add Object"></td>
+                        <td>
+                            <select name="useradd_negation_{{sent_idx}}" class="border rounded px-1 py-0.5">
+                                <option value="false">False</option>
+                                <option value="true">True</option>
+                            </select>
+                        </td>
+                        <td colspan="2">
+                            <input type="text" name="useradd_comment_{{sent_idx}}"
+                                class="border rounded px-1 py-0.5 w-32" placeholder="Comment (opt)">
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+        {% endfor %}
+        <button type="submit"
+            class="px-6 py-2 bg-blue-700 text-white rounded-xl font-semibold hover:bg-blue-800 shadow transition">
+            Submit Review
+        </button>
+    </form>
+</div>
 {% endblock %}

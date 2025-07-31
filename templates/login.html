@@ -1,39 +1,44 @@
 {% extends "base.html" %}
-{% block title %}Login{% endblock %}
+{% block title %}Login | Manual Review{% endblock %}
 {% block content %}
-<div class="flex flex-col items-center justify-center min-h-[60vh]">
-    <form method="post" id="login-form" class="space-y-5 w-full max-w-md bg-white p-8 rounded-2xl border shadow-xl">
-        <h2 class="mb-4 text-2xl font-bold text-center text-blue-900">Manual Review Login</h2>
+<div class="flex flex-col items-center justify-center min-h-[65vh]">
+    <form method="post" id="login-form"
+        class="bg-white shadow-2xl p-10 rounded-3xl border-2 border-blue-100 max-w-md w-full space-y-7">
+        <h2 class="text-2xl font-bold text-center text-blue-900 mb-4 flex items-center justify-center gap-2">
+            <img src="/static/logo_academic.svg" class="h-8 w-8" />
+            Reviewer Login
+        </h2>
         <div>
-            <label for="name" class="block font-semibold mb-1">Name</label>
-            <input type="text" name="name" id="name" required maxlength="32" autocomplete="on"
-                class="border px-3 py-2 rounded w-full focus:ring-2 focus:ring-blue-500 focus:outline-none transition"
-                placeholder="Your full name" />
+            <label for="name" class="block font-semibold mb-1 text-gray-700">Name</label>
+            <input type="text" name="name" id="name" maxlength="32" autocomplete="on"
+                class="border px-3 py-2 rounded-lg w-full focus:ring-2 focus:ring-blue-500 transition text-base"
+                placeholder="Your full name" required autofocus />
         </div>
         <div>
-            <label for="email_prefix" class="block font-semibold mb-1">Bristol Email</label>
+            <label for="email_prefix" class="block font-semibold mb-1 text-gray-700">Bristol Email</label>
             <div class="flex items-center">
                 <input type="text" name="email_prefix" id="email_prefix" pattern="^[a-zA-Z0-9._%+-]+$" maxlength="32"
-                    required autocomplete="username"
-                    class="border px-3 py-2 rounded-l w-2/3 focus:ring-2 focus:ring-blue-500 focus:outline-none transition"
-                    placeholder="yourid" />
+                    autocomplete="username"
+                    class="border px-3 py-2 rounded-l-lg w-2/3 focus:ring-2 focus:ring-blue-500 transition"
+                    placeholder="e.g. ab12345" required />
                 <span
-                    class="inline-block bg-gray-100 px-3 py-2 rounded-r text-gray-700 border border-l-0 border-gray-300 select-none">@bristol.ac.uk</span>
+                    class="inline-block bg-gray-100 px-3 py-2 rounded-r-lg text-gray-700 border border-l-0 border-gray-300 select-none font-mono">@bristol.ac.uk</span>
             </div>
             <small class="text-gray-400 mt-1 block">Just enter your Bristol email prefix (e.g. <b>abc123</b>)</small>
         </div>
         <input type="hidden" name="email" id="full_email">
         <button type="submit"
-            class="mt-5 w-full bg-blue-600 text-white py-2 rounded-lg font-semibold hover:bg-blue-700 transition">
+            class="mt-7 w-full bg-blue-700 text-white py-2 rounded-xl font-semibold hover:bg-blue-800 active:bg-blue-900 transition text-lg shadow-lg">
             Login
         </button>
+        <div class="text-gray-400 text-xs mt-6 text-center italic">
+            For authorized academic reviewers only. All actions are logged for scientific traceability.
+        </div>
     </form>
 </div>
 <script>
     document.addEventListener("DOMContentLoaded", function () {
-        // 自动聚焦姓名输入
         document.getElementById("name").focus();
-        // 自动补全邮箱
         document.getElementById("login-form").addEventListener("submit", function (e) {
             const prefix = document.getElementById("email_prefix").value.trim();
             if (!prefix) {
@@ -44,6 +49,8 @@
             }
             document.getElementById("full_email").value = prefix + "@bristol.ac.uk";
         });
+        // 禁止粘贴（防止意外/刷号）
+        document.getElementById("email_prefix").addEventListener("paste", e => e.preventDefault());
     });
 </script>
 {% endblock %}

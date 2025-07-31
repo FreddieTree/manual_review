@@ -1,6 +1,13 @@
+import re
+
 def is_valid_email(email):
     """
-    Assume frontend restricts to @bristol.ac.uk only.
-    For compatibility, just check non-empty input.
+    严格限定 bristol.ac.uk 邮箱，防止冒用。
     """
-    return bool(email and "@" in email)
+    if not email or not isinstance(email, str):
+        return False
+    email = email.strip().lower()
+    # 校验格式和后缀
+    if re.match(r"^[a-z0-9._%+-]+@bristol\.ac\.uk$", email):
+        return True
+    return False

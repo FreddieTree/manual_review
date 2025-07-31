@@ -1,7 +1,6 @@
 import json
-import time
 import os
-from config import ABSTRACTS_PATH
+from config import ABSTRACTS_PATH, REVIEW_LOGS_PATH
 
 _abstracts_cache = None
 _abstracts_last_mtime = 0

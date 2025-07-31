@@ -84,14 +84,12 @@ def audit_review_submission(abs_id, sentence_results, post_data, reviewer_info):
             object_type_key = f"object_type_{sent_idx}_{ass_idx}"
             user_op = post_data.get(review_key)
             comment = post_data.get(comment_key, "")
-            # 如果有内容被改动，则为modify/add
             changed = (
                 assertion["subject"] != post_data.get(subject_key, assertion["subject"]) or
                 assertion["predicate"] != post_data.get(predicate_key, assertion["predicate"]) or
                 assertion["object"] != post_data.get(object_key, assertion["object"]) or
                 str(assertion["negation"]).lower() != str(post_data.get(negation_key, assertion["negation"])).lower()
             )
-            # 新值打包
             updated_fields = {
                 "subject": post_data.get(subject_key, assertion["subject"]),
                 "subject_type": post_data.get(subject_type_key, assertion["subject_type"]),
@@ -103,7 +101,6 @@ def audit_review_submission(abs_id, sentence_results, post_data, reviewer_info):
             if user_op == "accept" and not changed:
                 continue  # 纯接受
             elif user_op == "modify" or (user_op == "accept" and changed):
-                # 只要有一项改动就记录modify/add
                 logs.append(update_assertion(
                     original=assertion,
                     updated_fields=updated_fields,
@@ -136,7 +133,7 @@ def audit_review_submission(abs_id, sentence_results, post_data, reviewer_info):
         subj = post_data.get(f"useradd_subject_{sent_idx}", "").strip()
         pred = post_data.get(f"useradd_predicate_{sent_idx}", "").strip()
         obj = post_data.get(f"useradd_object_{sent_idx}", "").strip()
-        subj_type = ""  # 可加高级版实体类型下拉
+        subj_type = ""  # 可扩展类型选项
         obj_type = ""
         neg = post_data.get(f"useradd_negation_{sent_idx}", "false").lower() == "true"
         comment = post_data.get(f"useradd_comment_{sent_idx}", "")
