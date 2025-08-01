@@ -1,3 +1,8 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+body {
+  font-family: 'Inter', 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  background-color: #f8fafc;
+}

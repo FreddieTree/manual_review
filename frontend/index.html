@@ -14,17 +14,21 @@
   <link rel="manifest" href="/manifest.webmanifest">
   <!-- Google Fonts: Inter for modern academic style -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
-  <!-- Tailwind CSS: remove if using Vite plugin/locally compiled -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" />
-  <!-- Extra: Highlight academic, research, and cross-platform -->
   <style>
     html,
     body {
       font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+      background: linear-gradient(135deg, #f8fafc 0%, #e3edfa 80%);
     }
 
     body {
-      background: linear-gradient(135deg, #f8fafc 0%, #e3edfa 80%);
+      min-height: 100vh;
+    }
+
+    /* Optional: Prevent vertical scroll bar for login page */
+    #root:has(.login-no-scroll) {
+      min-height: 100vh;
+      overflow: hidden;
     }
   </style>
 </head>

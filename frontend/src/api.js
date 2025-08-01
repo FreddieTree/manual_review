@@ -1,33 +1,52 @@
 // src/api.js
 import axios from "axios";
 
+const BASE_URL = import.meta.env.VITE_API_BASE?.replace(/\/$/, "") || "http://localhost:5050/api";
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || "http://localhost:5050/api",
+  baseURL: BASE_URL,
   withCredentials: true,
   timeout: 12000,
 });
 
-// 全局错误和自动跳转处理
+// 拦截处理
 api.interceptors.response.use(
   res => res,
   err => {
-    if (err.response?.status === 401) {
+    const status = err?.response?.status;
+    if (status === 401 || status === 403) {
       window.location.href = "/";
+      return Promise.reject("Unauthorized or session expired.");
     }
-    // 也可以全局toast错误
-    return Promise.reject(err.response?.data?.message || err.message || "Network error");
+    let msg = err?.response?.data?.message || err?.message || "Network error";
+    if (typeof msg !== "string") msg = JSON.stringify(msg);
+    return Promise.reject(msg);
   }
 );
 
-/** Reviewer登录 */
-export const loginReviewer = data => api.post("/login", data).then(r => r.data);
-/** 获取当前分配abstract */
-export const getAssignedAbstract = () => api.get("/assigned_abstract").then(r => r.data);
-/** 提交review表单 */
-export const submitReview = data => api.post("/submit_review", data).then(r => r.data);
-/** 管理员统计数据 */
-export const getAdminStats = () => api.get("/admin_stats").then(r => r.data);
-/** 登出 */
-export const logout = () => api.post("/logout").then(r => r.data);
+// 通用
+const call = req => req.then(r => r.data).catch(e => { throw e; });
 
-export default api; // 如需自定义request可以直接用
+// ------- API -------
+export const loginReviewer = data => call(api.post("/login", data));
+export const getAssignedAbstract = () => call(api.get("/assigned_abstract"));
+export const submitReview = data => call(api.post("/submit_review", data));
+export const logout = () => call(api.post("/logout"));
+
+export const getAdminStats = () => call(api.get("/admin_stats"));
+export const getReviewers = () => call(api.get("/reviewers"));
+export const addReviewer = data => call(api.post("/reviewers", data));
+export const updateReviewer = (email, data) => call(api.put(`/reviewers/${encodeURIComponent(email)}`, data));
+export const deleteReviewer = email => call(api.delete(`/reviewers/${encodeURIComponent(email)}`));
+export const getArbitrationQueue = () => call(api.get("/arbitration_queue"));
+export const arbitrate = data => call(api.post("/arbitrate", data));
+export const exportConsensus = () => call(api.get("/export_consensus"));
+
+export const createAssertion = ({ pmid, sentence_index, assertion }) =>
+  call(api.post("/review/assertion/create", { pmid, sentence_index, ...assertion }));
+export const updateAssertion = ({ pmid, sentence_index, assertion_id, ...fields }) =>
+  call(api.post("/review/assertion/update", { pmid, sentence_index, assertion_id, ...fields }));
+export const deleteAssertion = ({ pmid, sentence_index, assertion_id }) =>
+  call(api.post("/review/assertion/delete", { pmid, sentence_index, assertion_id }));
+export const getPricing = () => call(api.get("/review/pricing"));
+
+export default api;
