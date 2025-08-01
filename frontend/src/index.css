@@ -2,129 +2,325 @@
 @tailwind components;
 @tailwind utilities;
 
-/* design tokens fallback (可被 generate-css-variables.js 生成的文件覆盖) */
+/* ---------------------------------------------------
+   Design tokens fallback (overridden by generated CSS)
+   --------------------------------------------------- */
 :root {
+  /* Typography & fonts */
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-  --bg: #f8fafc;
-  --surface: #ffffff;
-  --text: #1e2a44;
-  --muted: #f1f5fa;
-  --radius: 1rem;
-  --shadow-default: 0 16px 48px -8px rgba(43,93,215,0.15);
-  --border: #d9e2ef;
-  --transition: 0.2s cubic-bezier(.4,.2,.2,1);
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Color palette */
+  --color-background: #f8fafc;
+  --color-surface: #ffffff;
+  --color-text: #1e2a44;
+  --color-muted: #f1f5fa;
+  --color-border: #d9e2ef;
+  --color-primary: #2b5dd7;
+  --color-primary-hover: #1f4fc3;
+  --color-link: #2563eb;
+  --color-link-hover: #1d4ed8;
+  --color-radius: 1rem;
+
+  /* Shadows (Apple-like soft elevation) */
+  --shadow-light: 0 20px 60px -10px rgba(43,93,215,0.08);
+  --shadow-default: 0 30px 90px -15px rgba(43,93,215,0.12);
+  --shadow-hover: 0 40px 100px -15px rgba(43,93,215,0.16);
+
+  /* Motion / transition */
+  --transition-base: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-fast: all 0.15s cubic-bezier(0.3, 0, 0.1, 1);
+
+  /* Accessibility / utilities */
+  --focus-ring: 2px solid rgba(43,93,215,0.9);
+  --focus-offset: 3px;
 }
 
-/* dark theme overrides (if using data-theme="dark" or .dark) */
+/* Dark theme overrides (supports [data-theme="dark"], .dark, and auto via media query) */
 [data-theme="dark"], .dark {
-  --bg: #0f172a;
-  --surface: #1f2a44;
-  --text: #e2e8ff;
-  --muted: #1f2a44;
-  --border: #2a3658;
+  --color-background: #0f172a;
+  --color-surface: #1f2a44;
+  --color-text: #e2e8ff;
+  --color-muted: #1f2a44;
+  --color-border: #2a3658;
+  --color-link: #7daaff;
+  --color-link-hover: #a6c8ff;
 }
 
-/* apply base */
-body {
-  font-family: var(--font-sans);
-  background-color: var(--bg);
-  color: var(--text);
-  line-height: 1.55;
-  -webkit-font-smoothing: antialiased;
+/* System preference fallback when theme not explicitly set */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --color-background: #0f172a;
+    --color-surface: #1f2a44;
+    --color-text: #e2e8ff;
+    --color-muted: #1f2a44;
+    --color-border: #2a3658;
+    --color-link: #7daaff;
+    --color-link-hover: #a6c8ff;
+  }
+}
+
+/* High contrast mode hints (optional enhancement) */
+@media (prefers-contrast: more) {
+  :root {
+    --color-text: #ffffff;
+    --color-background: #0f1f44;
+    --color-surface: #1f2a44;
+    --color-border: #4a5b8c;
+  }
+}
+
+/* ---------------------------------------------------
+   Base element styles
+   --------------------------------------------------- */
+html {
   scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  background-color: var(--color-background);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  line-height: 1.55;
+  min-height: 100%;
 }
 
-/* Utility text enhancements */
+body {
+  background: var(--color-background);
+  margin: 0;
+  padding: 0;
+}
+
+/* Headings consistent weight/spacing */
 h1, h2, h3, h4 {
   font-weight: 700;
   line-height: 1.2;
-  color: var(--text);
+  color: var(--color-text);
+  margin: 0;
 }
+
+/* Paragraph reset */
 p {
   margin: 0;
 }
 
 /* Links */
 a {
-  color: #2563eb;
+  color: var(--color-link);
   text-decoration: none;
-  transition: color var(--transition);
+  transition: color var(--transition-base);
 }
-a:hover {
-  color: #0f172a;
+a:hover,
+a:focus {
+  color: var(--color-link-hover);
   text-decoration: underline;
 }
-
-/* Accessible focus */
-:focus-visible {
-  outline: 2px solid rgba(43,93,215,0.8);
-  outline-offset: 2px;
+a:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
 }
 
-/* Scrollbar (light+dark aware) */
+/* Accessible focus for all interactive */
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+/* ---------------------------------------------------
+   Scrollbar (cross-theme, accessible)
+   --------------------------------------------------- */
 ::-webkit-scrollbar {
-  width: 10px;
-  background: var(--muted);
+  width: 12px;
+  height: 12px;
+  background: var(--color-muted);
+}
+::-webkit-scrollbar-track {
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(100,116,139,0.5);
-  border-radius: 6px;
-  border: 2px solid var(--muted);
+  border-radius: 8px;
+  border: 3px solid var(--color-muted);
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100,116,139,0.7);
+  background: rgba(100,116,139,0.75);
 }
 
-/* Forms: baseline reset to blend with design */
-input, select, textarea, button {
+/* ---------------------------------------------------
+   Form & input enhancements
+   --------------------------------------------------- */
+input,
+select,
+textarea,
+button {
   font-family: inherit;
-  transition: all var(--transition);
+  transition: var(--transition-base);
+  background: none;
+  border: none;
+  outline: none;
 }
 
-/* Background utilities fallback */
-.bg-surface {
-  background-color: var(--surface);
+/* Inputs/selects consistent default appearance */
+input,
+select,
+textarea {
+  background-color: var(--color-surface);
+  padding: 0.65rem 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: calc(var(--color-radius) * 0.65);
+  color: var(--color-text);
+  font-size: 1rem;
+  width: 100%;
+  box-sizing: border-box;
+  position: relative;
+  appearance: none;
 }
-.bg-muted {
-  background-color: var(--muted);
+input:focus,
+select:focus,
+textarea:focus {
+  box-shadow: 0 0 0 3px rgba(43,93,215,0.35);
+  border-color: var(--color-primary);
 }
 
-/* Shadows */
-.shadow-card {
-  box-shadow: var(--shadow-default);
-}
-
-/* Rounded */
-.rounded-token {
-  border-radius: var(--radius);
-}
-
-/* Disabled state */
-[disabled], .disabled {
-  opacity: 0.6;
+/* Disabled */
+[disabled],
+.disabled {
+  opacity: 0.55;
   cursor: not-allowed;
 }
 
-/* Text truncation helper */
+/* Autofill smooth transition (WebKit) */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0px 1000px var(--color-surface) inset;
+  box-shadow: 0 0 0px 1000px var(--color-surface) inset;
+  -webkit-text-fill-color: var(--color-text);
+  transition: background-color 5000s ease-in-out 0s; /* keep custom bg */
+}
+
+/* For non-WebKit browsers fallback */
+input:-internal-autofill-selected {
+  background-color: var(--color-surface) !important;
+}
+
+/* Placeholder */
+::placeholder {
+  color: rgba(30,42,68,0.35);
+  font-weight: 500;
+}
+
+/* ---------------------------------------------------
+   Utility classes (Apple-style helpers)
+   --------------------------------------------------- */
+.bg-surface {
+  background-color: var(--color-surface);
+}
+.bg-muted {
+  background-color: var(--color-muted);
+}
+.text-muted {
+  color: rgba(30,42,68,0.6);
+}
+
+/* Rounded helpers */
+.rounded-token {
+  border-radius: var(--color-radius);
+}
+.rounded-apple {
+  border-radius: calc(var(--color-radius) * 1.2);
+}
+
+/* Elevation / card */
+.shadow-card {
+  box-shadow: var(--shadow-default);
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+.hover-elevate:hover {
+  box-shadow: var(--shadow-hover);
+  transform: translateY(-1px);
+}
+
+/* Glass / frosted card (Apple feel) */
+.glass-card {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(16px);
+  border-radius: calc(var(--color-radius) * 1.1);
+  box-shadow: var(--shadow-light);
+  border: 1px solid rgba(255,255,255,0.35);
+}
+.dark .glass-card,
+[data-theme="dark"] .glass-card {
+  background: rgba(31, 41, 55, 0.75);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+
+/* Soft focus glow */
+.soft-focus {
+  box-shadow: 0 0 50px rgba(99, 102, 241, 0.15);
+}
+
+/* Smooth elevation transition */
+.transition-elevate {
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+
+/* Truncation */
 .truncate-multiline {
   display: -webkit-box;
   -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;  
+  -webkit-box-orient: vertical;
   overflow: hidden;
 }
 
-/* Utility for smooth elevation change */
-.transition-elevate {
-  transition: box-shadow var(--transition), transform var(--transition);
+/* Utility for consistent spacing hints (can be extended via tokens) */
+.spaced {
+  padding: 1rem;
 }
 
-/* Dark/light mode prefixed variants (for non-JS) */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme]) {
-    --bg: #0f172a;
-    --surface: #1f2a44;
-    --text: #e2e8ff;
-    --muted: #1f5a44;
-    --border: #2a3658;
+/* ---------------------------------------------------
+   Responsive & accessibility helpers
+   --------------------------------------------------- */
+/* Reduce motion for users who request it */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
+    scroll-behavior: auto;
+  }
+}
+
+/* Focus ring fallback for legacy browsers */
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-offset);
+}
+
+/* ---------------------------------------------------
+   Utility for theme transition (soft switch)
+   --------------------------------------------------- */
+.theme-transition {
+  transition: background-color var(--transition-base), color var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
+}
+
+/* ---------------------------------------------------
+   Accessibility enhancements
+   --------------------------------------------------- */
+/* High contrast assist (user override) */
+@media (forced-colors: active) {
+  :root {
+    forced-color-adjust: none;
+  }
+  body {
+    background: Window;
+    color: WindowText;
+  }
+  a {
+    color: Highlight;
+  }
+  input, select, textarea {
+    background: Field;
+    color: FieldText;
+    border: 1px solid Highlight;
   }
 }

@@ -1,47 +1,134 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 
 <head>
-  <meta charset="UTF-8">
-  <title>Biomedical Assertion Manual Review Platform</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="A professional platform for manual review of biomedical assertion extractions.">
-  <meta name="keywords" content="biomedical, assertion extraction, manual review, annotation, research, NLP">
-  <meta name="author" content="Bristol NLP Lab">
-  <meta name="theme-color" content="#2563eb" />
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="apple-touch-icon" href="/favicon.svg">
-  <link rel="manifest" href="/manifest.webmanifest">
-  <!-- Google Fonts: Inter for modern academic style -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+  <meta charset="utf-8" />
+  <title>Biomedical Assertion Review · Bristol NLP Lab</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="description"
+    content="Professional platform for manual review of biomedical assertion extractions. Efficient, accessible, and human-in-the-loop." />
+  <meta name="keywords" content="biomedical, assertion extraction, manual review, annotation, NLP, Bristol" />
+  <meta name="author" content="Bristol NLP Lab" />
+  <meta name="theme-color" content="#f0f6ff" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#0f1f44" media="(prefers-color-scheme: dark)" />
+
+  <!-- Open Graph / Social preview -->
+  <meta property="og:title" content="Biomedical Assertion Review" />
+  <meta property="og:description"
+    content="Professional platform for manual review of biomedical assertion extractions." />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Bristol NLP Lab" />
+  <!-- Placeholder image; replace with real asset in production -->
+  <meta property="og:image" content="/social-preview.png" />
+  <meta property="og:image:alt" content="Biomedical assertion review interface" />
+
+  <!-- Twitter -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Biomedical Assertion Review" />
+  <meta name="twitter:description"
+    content="Professional platform for manual review of biomedical assertion extractions." />
+  <meta name="twitter:image" content="/social-preview.png" />
+
+  <!-- Favicons & PWA -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+
+  <!-- Performance / Font loading -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Use font-display=swap via Google API for smooth rendering -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Preload critical entry (Vite will replace with actual hashed file in build) -->
+  <!-- Vite automatically injects scripts; these are hints for future extension -->
+  <link rel="preload" href="/src/main.jsx" as="script" />
+
+  <!-- Critical minimal styles to avoid flash -->
   <style>
-    html,
-    body {
-      font-family: 'Inter', 'Segoe UI', 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    :root {
+      color-scheme: light dark;
+    }
+
+    html {
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+        'Segoe UI', Roboto, Arial, sans-serif;
       background: linear-gradient(135deg, #f8fafc 0%, #e3edfa 80%);
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
     }
 
     body {
       min-height: 100vh;
+      margin: 0;
+      background: inherit;
     }
 
-    /* Optional: Prevent vertical scroll bar for login page */
-    #root:has(.login-no-scroll) {
-      min-height: 100vh;
-      overflow: hidden;
+    /* reduced motion preference */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation: none !important;
+        transition: none !important;
+      }
+    }
+
+    /* low-JS fallback styling for root */
+    #root {
+      isolation: isolate;
     }
   </style>
+
+  <!-- Safari minimal-ui hint -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+
+  <!-- Accessibility: announce if JS is disabled -->
+  <noscript>
+    <style>
+      #no-js-warning {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(255, 250, 250, 0.95);
+        z-index: 9999;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      }
+    </style>
+  </noscript>
 </head>
 
 <body>
   <noscript>
-    <div style="padding:2rem;text-align:center;color:#b91c1c;font-weight:bold;">
-      This platform requires JavaScript to function properly.<br>
-      Please enable JavaScript in your browser settings.
+    <div id="no-js-warning" role="alert" aria-live="assertive" aria-label="JavaScript required">
+      <div
+        style="max-width:480px; text-align:center; padding:1.5rem; border-radius:1rem; background:#fee2e2; color:#b91c1c; box-shadow:0 20px 60px -10px rgba(0,0,0,0.1);">
+        <strong>JavaScript is required.</strong><br />
+        This platform relies on JavaScript to function. Please enable it in your browser settings.
+      </div>
     </div>
   </noscript>
+
   <div id="root"></div>
-  <script type="module" src="/src/main.jsx"></script>
+
+  <!-- Entry point: Vite will handle module loading -->
+  <script type="module" src="/src/main.jsx" defer></script>
+
+  <!-- Theme toggle sync (optional): respects system preference -->
+  <script>
+    (function () {
+      try {
+        const stored = localStorage.getItem("theme");
+        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        if (stored === "dark" || (!stored && prefersDark)) {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+      } catch { }
+    })();
+  </script>
 </body>
 
 </html>

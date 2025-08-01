@@ -1,69 +1,94 @@
 // src/components/AssertionSummaryPanel.jsx
-import DecisionBadge from "./DecisionBadge";
-import { useMemo } from "react";
+import React, { useMemo, useCallback } from "react";
+import PropTypes from "prop-types";
 import clsx from "clsx";
+import DecisionBadge from "./DecisionBadge";
+import Tooltip from "./ui/Tooltip";
 
-/**
- * Small legend / key
- */
+const VALID_DECISIONS = ["accept", "modify", "reject", "uncertain"];
+const DECISION_INFO = {
+    accept: { label: "Accept", colorClass: "bg-emerald-500", display: "ACCEPT" },
+    modify: { label: "Modify", colorClass: "bg-yellow-500", display: "MODIFY" },
+    reject: { label: "Reject", colorClass: "bg-red-500", display: "REJECT" },
+    uncertain: { label: "Uncertain", colorClass: "bg-gray-400", display: "UNCERTAIN" },
+};
+
+/** Legend item */
 const LegendItem = ({ label, colorClass }) => (
-    <div className="flex items-center gap-1 text-[11px]">
-        <span className={clsx("w-3 h-3 rounded-full", colorClass)}></span>
+    <div className="flex items-center gap-2 text-[11px]">
+        <span
+            className={clsx("w-3 h-3 rounded-full flex-shrink-0", colorClass)}
+            aria-hidden="true"
+        />
         <span>{label}</span>
     </div>
 );
 
-/**
- * Summary bar showing relative proportions of decisions for a sentence.
- */
-const SentenceBar = ({ counts, total }) => {
-    const getPct = (n) => (total > 0 ? (n / total) * 100 : 0);
+LegendItem.propTypes = {
+    label: PropTypes.string.isRequired,
+    colorClass: PropTypes.string.isRequired,
+};
+
+/** Stacked bar for decisions */
+const SentenceBar = ({ counts, total, ariaLabel }) => {
+    const pct = (n) => (total > 0 ? (n / total) * 100 : 0);
     return (
-        <div className="flex h-2 w-full overflow-hidden rounded-full bg-gray-100">
-            <div
-                className="transition-all"
-                style={{
-                    width: `${getPct(counts.accept)}%`,
-                    backgroundColor: "rgba(16, 185, 129, 0.9)", // emerald
-                }}
-            />
-            <div
-                className="transition-all"
-                style={{
-                    width: `${getPct(counts.modify)}%`,
-                    backgroundColor: "rgba(234, 179, 8, 0.9)", // yellow
-                }}
-            />
-            <div
-                className="transition-all"
-                style={{
-                    width: `${getPct(counts.reject)}%`,
-                    backgroundColor: "rgba(239, 68, 68, 0.9)", // red
-                }}
-            />
-            <div
-                className="transition-all"
-                style={{
-                    width: `${getPct(counts.uncertain)}%`,
-                    backgroundColor: "rgba(107, 114, 128, 0.9)", // gray
-                }}
-            />
+        <div
+            className="relative flex h-2 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700"
+            aria-label={ariaLabel}
+            role="img"
+        >
+            {VALID_DECISIONS.map((key) => {
+                const value = counts[key] || 0;
+                if (value <= 0) return null;
+                let bg;
+                switch (key) {
+                    case "accept":
+                        bg = "rgba(16,185,129,0.85)";
+                        break;
+                    case "modify":
+                        bg = "rgba(234,179,8,0.85)";
+                        break;
+                    case "reject":
+                        bg = "rgba(239,68,68,0.85)";
+                        break;
+                    default:
+                        bg = "rgba(107,114,128,0.85)";
+                }
+                return (
+                    <div
+                        key={key}
+                        className="transition-all"
+                        style={{
+                            width: `${pct(value)}%`,
+                            backgroundColor: bg,
+                        }}
+                    />
+                );
+            })}
+            <span className="sr-only">
+                {VALID_DECISIONS.map((k) => {
+                    const v = counts[k] || 0;
+                    return v > 0 ? `${DECISION_INFO[k].label}: ${v}` : null;
+                })
+                    .filter(Boolean)
+                    .join(", ")}
+            </span>
         </div>
     );
 };
 
-/**
- * Props:
- *  - sentenceResults: array of sentence objects
- *  - reviewStatesMap: { [sentence_index]: [{ decision, comment, isModified }] }
- *  - overallDecision: optional overall decision for display
- */
+SentenceBar.propTypes = {
+    counts: PropTypes.object.isRequired,
+    total: PropTypes.number.isRequired,
+    ariaLabel: PropTypes.string,
+};
+
 export default function AssertionSummaryPanel({
     sentenceResults = [],
     reviewStatesMap = {},
     overallDecision = null,
 }) {
-    // aggregate totals
     const aggregate = useMemo(() => {
         const summary = {
             accept: 0,
@@ -75,53 +100,68 @@ export default function AssertionSummaryPanel({
         sentenceResults.forEach((s) => {
             const states = reviewStatesMap?.[s.sentence_index] || [];
             states.forEach((st) => {
-                summary[st.decision] = (summary[st.decision] || 0) + 1;
+                const decision = VALID_DECISIONS.includes(st.decision) ? st.decision : "uncertain";
+                summary[decision] = (summary[decision] || 0) + 1;
                 summary.totalAssertions += 1;
             });
         });
         return summary;
     }, [sentenceResults, reviewStatesMap]);
 
-    // helper to pick dominant per-sentence decision
-    const getDominant = (counts) => {
-        const entries = Object.entries(counts);
-        entries.sort((a, b) => b[1] - a[1]);
-        return entries[0][0] || "uncertain";
-    };
+    const getDominant = useCallback((counts) => {
+        let top = "uncertain";
+        VALID_DECISIONS.forEach((k) => {
+            if ((counts[k] || 0) > (counts[top] || 0)) top = k;
+        });
+        return top;
+    }, []);
 
     return (
-        <div className="bg-white rounded-2xl shadow-lg border border-gray-200 p-5 flex flex-col gap-4 w-full">
-            <div className="flex justify-between items-start">
-                <div>
-                    <div className="text-lg font-semibold text-gray-800">Review Summary</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                        Sentence-level breakdown and overall tally
+        <div className="bg-white dark:bg-[#1f2937] rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-5 w-full">
+            {/* Header */}
+            <div className="flex flex-wrap justify-between items-start gap-3">
+                <div className="flex flex-col">
+                    <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 leading-tight">
+                            Review Summary
+                        </h2>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">
+                            Sentence & assertion breakdown
+                        </div>
                     </div>
                 </div>
                 {overallDecision && (
                     <div className="flex items-center gap-2">
-                        <div className="text-[11px] text-gray-600 uppercase">Overall</div>
+                        <div className="text-[11px] text-gray-500 uppercase tracking-wider">
+                            Overall
+                        </div>
                         <DecisionBadge decision={overallDecision} />
                     </div>
                 )}
             </div>
 
-            {/* aggregate overview */}
-            <div className="flex flex-col gap-3">
-                <div className="flex justify-between items-center flex-wrap gap-2">
-                    <div className="flex gap-4 flex-wrap">
-                        <LegendItem label="Accept" colorClass="bg-emerald-500" />
-                        <LegendItem label="Modify" colorClass="bg-yellow-500" />
-                        <LegendItem label="Reject" colorClass="bg-red-500" />
-                        <LegendItem label="Uncertain" colorClass="bg-gray-500" />
+            {/* Aggregate overview */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap justify-between items-center gap-2">
+                        <div className="flex gap-5 flex-wrap">
+                            <LegendItem label="Accept" colorClass="bg-emerald-500" />
+                            <LegendItem label="Modify" colorClass="bg-yellow-500" />
+                            <LegendItem label="Reject" colorClass="bg-red-500" />
+                            <LegendItem label="Uncertain" colorClass="bg-gray-500" />
+                        </div>
+                        <div className="flex items-center gap-1">
+                            <div className="text-[12px] text-gray-500">Total assertions:</div>
+                            <div className="text-xl font-semibold text-gray-800 dark:text-gray-100">
+                                {aggregate.totalAssertions}
+                            </div>
+                        </div>
                     </div>
-                    <div className="text-sm text-gray-600">
-                        Total assertions: <span className="font-medium">{aggregate.totalAssertions}</span>
-                    </div>
-                </div>
-                <div className="flex gap-4 flex-wrap">
-                    <div className="flex-1 min-w-[160px]">
-                        <div className="text-[11px] uppercase text-gray-500 mb-1">Summary Bar</div>
+
+                    <div className="mt-1 flex flex-col gap-2">
+                        <div className="text-[11px] uppercase text-gray-500 tracking-wide">
+                            Distribution
+                        </div>
                         <SentenceBar
                             counts={{
                                 accept: aggregate.accept,
@@ -130,57 +170,75 @@ export default function AssertionSummaryPanel({
                                 uncertain: aggregate.uncertain,
                             }}
                             total={aggregate.totalAssertions}
+                            ariaLabel="Overall assertion distribution"
                         />
-                    </div>
-                    <div className="flex gap-6 flex-wrap">
-                        <div className="flex flex-col">
-                            <div className="text-[12px] text-gray-500">Accepted</div>
-                            <div className="text-lg font-semibold text-emerald-700">{aggregate.accept}</div>
-                        </div>
-                        <div className="flex flex-col">
-                            <div className="text-[12px] text-gray-500">Modified</div>
-                            <div className="text-lg font-semibold text-yellow-700">{aggregate.modify}</div>
-                        </div>
-                        <div className="flex flex-col">
-                            <div className="text-[12px] text-gray-500">Rejected</div>
-                            <div className="text-lg font-semibold text-red-600">{aggregate.reject}</div>
-                        </div>
-                        <div className="flex flex-col">
-                            <div className="text-[12px] text-gray-500">Uncertain</div>
-                            <div className="text-lg font-semibold text-gray-600">{aggregate.uncertain}</div>
+                        <div className="flex gap-6 flex-wrap mt-2">
+                            {VALID_DECISIONS.map((key) => (
+                                <div key={key} className="flex flex-col">
+                                    <div className="text-[12px] text-gray-500">
+                                        {DECISION_INFO[key].label}
+                                    </div>
+                                    <div
+                                        className={clsx("text-lg font-semibold", {
+                                            "text-emerald-700": key === "accept",
+                                            "text-yellow-700": key === "modify",
+                                            "text-red-600": key === "reject",
+                                            "text-gray-600": key === "uncertain",
+                                        })}
+                                    >
+                                        {aggregate[key]}
+                                    </div>
+                                </div>
+                            ))}
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* per-sentence breakdown */}
-            <div className="grid grid-cols-1 sm:grid-cols-1 gap-3">
+            {/* Per-sentence breakdown */}
+            <div className="grid grid-cols-1 gap-3">
                 {sentenceResults.map((s) => {
                     const states = reviewStatesMap?.[s.sentence_index] || [];
                     const counts = { accept: 0, modify: 0, reject: 0, uncertain: 0 };
                     states.forEach((st) => {
-                        counts[st.decision] = (counts[st.decision] || 0) + 1;
+                        const decision = VALID_DECISIONS.includes(st.decision) ? st.decision : "uncertain";
+                        counts[decision] = (counts[decision] || 0) + 1;
                     });
                     const total = states.length;
                     const dominant = getDominant(counts);
                     return (
                         <div
                             key={s.sentence_index}
-                            className="flex items-center justify-between bg-gray-50 p-3 rounded-lg border"
+                            className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-gray-50 dark:bg-[#111827] p-3 rounded-xl border border-gray-200 dark:border-gray-700"
                             aria-label={`Sentence ${s.sentence_index} summary`}
                         >
                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <div className="text-sm font-medium w-10">S{s.sentence_index}</div>
-                                <div className="flex-1">
-                                    <SentenceBar counts={counts} total={total} />
+                                <div className="text-sm font-medium w-10 flex-shrink-0">
+                                    S{s.sentence_index}
                                 </div>
-                                <div className="text-[11px] text-gray-600">
-                                    {total > 0 ? `${total} assertion${total > 1 ? "s" : ""}` : "No assertions"}
+                                <div className="flex-1">
+                                    <SentenceBar
+                                        counts={counts}
+                                        total={total}
+                                        ariaLabel={`Sentence ${s.sentence_index} assertion distribution`}
+                                    />
+                                </div>
+                                <div className="text-[11px] text-gray-600 dark:text-gray-400 whitespace-nowrap">
+                                    {total > 0
+                                        ? `${total} assertion${total > 1 ? "s" : ""}`
+                                        : "No assertions"}
                                 </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 mt-2 sm:mt-0">
                                 <div className="text-[11px]">Dominant</div>
-                                <DecisionBadge decision={dominant} />
+                                <Tooltip
+                                    label={`Most frequent decision: ${DECISION_INFO[dominant].label}`}
+                                    placement="top"
+                                >
+                                    <div>
+                                        <DecisionBadge decision={dominant} />
+                                    </div>
+                                </Tooltip>
                             </div>
                         </div>
                     );
@@ -189,3 +247,9 @@ export default function AssertionSummaryPanel({
         </div>
     );
 }
+
+AssertionSummaryPanel.propTypes = {
+    sentenceResults: PropTypes.arrayOf(PropTypes.object),
+    reviewStatesMap: PropTypes.object,
+    overallDecision: PropTypes.string,
+};

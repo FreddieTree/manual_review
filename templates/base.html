@@ -1,64 +1,270 @@
 <!DOCTYPE html>
-<html lang="en" class="antialiased scroll-smooth">
+<html lang="en" class="antialiased scroll-smooth" data-theme="light">
 
 <head>
   <meta charset="UTF-8" />
   <title>{% block title %}Manual Review Platform{% endblock %}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <!-- Tailwind CDN: Dev only; in prod replace with compiled build -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="High-integrity, auditable biomedical assertion review platform." />
+  <meta name="theme-color" content="#f0f5ff" />
+  <meta name="color-scheme" content="light dark" />
+
+  <!-- Preconnect / Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind (dev CDN, swap to built in prod) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@3.4.1/dist/tailwind.min.css" />
+
+  <!-- Favicon / Touch -->
   <link rel="icon" href="/static/favicon.svg" />
+  <link rel="apple-touch-icon" href="/static/apple-touch-icon.png" />
+
+  <!-- System-level CSS variables fallback -->
   <style>
-    /* subtle scrollbar for overflow areas */
+    :root {
+      --radius: 1.25rem;
+      --shadow-soft: 0 28px 60px -12px rgba(43, 93, 215, 0.08);
+      --shadow-card: 0 32px 80px -16px rgba(43, 93, 215, 0.12);
+      --bg: #f5f8fc;
+      --surface: #ffffff;
+      --text: #1f2f50;
+      --muted: #f0f4fa;
+      --border: rgba(0, 0, 0, 0.04);
+      --radius-sm: .75rem;
+      --transition: 0.25s cubic-bezier(.4, .2, .2, 1);
+      --focus-ring: 2px solid rgba(43, 93, 215, 0.6);
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    }
+
+    [data-theme="dark"] {
+      --bg: #0f1f44;
+      --surface: #1f2a5a;
+      --text: #e8ecfb;
+      --muted: #1f385f;
+      --border: rgba(255, 255, 255, 0.08);
+    }
+
+    html {
+      background: var(--bg);
+      color: var(--text);
+      scroll-behavior: smooth;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body {
+      min-height: 100vh;
+      font-feature-settings: "ss06" 1;
+    }
+
+    a {
+      color: #2563eb;
+      text-decoration: none;
+      transition: color var(--transition);
+    }
+
+    a:hover,
+    a:focus {
+      color: #1e4ac8;
+      outline: none;
+      text-decoration: underline;
+    }
+
+    :focus-visible {
+      outline: var(--focus-ring);
+      outline-offset: 2px;
+    }
+
+    /* Scrollbar (light/dark aware) */
     ::-webkit-scrollbar {
-      width: 10px;
+      width: 12px;
+      height: 12px;
     }
 
     ::-webkit-scrollbar-track {
-      background: rgba(0, 0, 0, 0.02);
+      background: rgba(255, 255, 255, 0.04);
     }
 
     ::-webkit-scrollbar-thumb {
-      background: rgba(100, 100, 100, 0.25);
-      border-radius: 6px;
+      background: rgba(100, 116, 139, 0.35);
+      border-radius: 8px;
+      border: 3px solid var(--bg);
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(100, 116, 139, 0.55);
+    }
+
+    /* Autofill smooth transition (Apple-style) */
+    input:-webkit-autofill,
+    textarea:-webkit-autofill,
+    select:-webkit-autofill {
+      transition: background-color 5000s ease-in-out 0s, color var(--transition);
+      -webkit-text-fill-color: var(--text) !important;
+      box-shadow: 0 0 0px 1000px var(--surface) inset;
+    }
+
+    /* Utility base */
+    .card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow-card);
+      border: 1px solid var(--border);
+    }
+
+    .btn-apple {
+      border-radius: 999px;
+      font-weight: 600;
+      padding: .75rem 1.5rem;
+      transition: transform .15s ease, box-shadow .25s ease;
+    }
+
+    .btn-apple:active {
+      transform: translateY(1px);
+    }
+
+    .ring-soft:focus-visible {
+      outline: none;
+      box-shadow: 0 0 0 3px rgba(43, 93, 215, 0.35);
+    }
+
+    /* Toast container (enhanced) */
+    #toast-root {
+      position: fixed;
+      top: 1rem;
+      right: 1rem;
+      z-index: 60;
+      display: flex;
+      flex-direction: column;
+      gap: .5rem;
+      width: auto;
+      max-width: 360px;
+    }
+
+    .toast {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: .75rem 1rem;
+      border-radius: 1rem;
+      font-size: .9rem;
+      position: relative;
+      overflow: hidden;
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(255, 255, 255, 0.8);
+      color: #1f2f50;
+      box-shadow: 0 20px 60px -10px rgba(43, 93, 215, 0.1);
+      animation: slideIn .35s cubic-bezier(.4, .2, .2, 1);
+    }
+
+    .toast.error {
+      background: rgba(255, 238, 238, 0.9);
+      border-color: #f8c3c3;
+      color: #9f2a2a;
+    }
+
+    .toast.success {
+      background: rgba(236, 253, 245, 0.95);
+      border-color: #8ad7b5;
+      color: #0f5a3c;
+    }
+
+    .toast.warn {
+      background: rgba(255, 250, 230, 0.9);
+      border-color: #f9d976;
+      color: #6d4c00;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-6px) scale(.98);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    /* Skip link */
+    .skip-link {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      top: 0.5rem;
+      background: rgba(255, 255, 255, 0.9);
+      padding: .5rem 1rem;
+      border-radius: .75rem;
+      font-size: .75rem;
+      z-index: 70;
+      box-shadow: 0 8px 32px -4px rgba(31, 45, 81, 0.15);
+      transition: opacity .2s ease;
+    }
+
+    .skip-link:focus {
+      outline: none;
+      opacity: 1;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation: none !important;
+        transition: none !important;
+      }
     }
   </style>
+
+  {% block head_extra %}{% endblock %}
 </head>
 
-<body class="bg-gradient-to-br from-slate-50 to-sky-50 min-h-screen font-sans text-sm text-slate-800 flex flex-col">
-  <!-- Global Toast / Flash container -->
-  <div id="toast-root" class="fixed top-4 right-4 z-50 flex flex-col gap-2 w-full max-w-sm"></div>
+<body class="flex flex-col min-h-screen">
+  <!-- Skip to content for screen readers / keyboard users -->
+  <a href="#main-content" class="skip-link sr-only focus:not-sr-only">Skip to content</a>
 
-  <!-- Main Content -->
-  <main class="flex-1 w-full overflow-auto">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
+  <!-- Theme toggle (optional) -->
+  <div class="fixed top-4 left-4 z-50">
+    <button aria-label="Toggle theme" id="theme-toggle"
+      class="inline-flex items-center gap-2 px-3 py-2 bg-white/80 backdrop-blur-sm rounded-full shadow hover:brightness-105 transition">
+      <span class="sr-only">Toggle light/dark mode</span>
+      <svg id="theme-icon" aria-hidden="true" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2"
+        viewBox="0 0 24 24">
+        <!-- sun/moon will be swapped in JS -->
+        <circle cx="12" cy="12" r="5" />
+      </svg>
+    </button>
+  </div>
+
+  <!-- Global Toast / Flash container -->
+  <div id="toast-root" aria-live="polite" class="pointer-events-none"></div>
+
+  <!-- Main wrapper -->
+  <main id="main-content" class="flex-1 w-full overflow-auto">
+    <div class="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-      <div class="space-y-2 mb-4">
+      <div class="space-y-3 mb-6">
         {% for category, message in messages %}
-        <div
-          class="relative rounded-lg shadow flex items-start gap-3 p-4 border-l-4 {% if category == 'error' %}border-rose-500 bg-rose-50 text-rose-800{% elif category == 'success' %}border-emerald-500 bg-emerald-50 text-emerald-800{% else %}border-amber-500 bg-amber-50 text-amber-800{% endif %}">
-          <div class="flex-1">
-            <div class="text-sm">{{
-              message
-              }}</div>
-          </div>
-          <button aria-label="dismiss" onclick="this.parentElement.remove()"
-            class="text-xs text-slate-500 hover:text-slate-700">
-            ✕
+        <div role="alert"
+          class="card flex items-start gap-4 p-4 border-l-4 {% if category == 'error' %}border-rose-500 bg-rose-50 text-rose-800{% elif category == 'success' %}border-emerald-500 bg-emerald-50 text-emerald-800{% else %}border-amber-500 bg-amber-50 text-amber-800{% endif %}">
+          <div class="flex-1 text-sm">{{ message }}</div>
+          <button aria-label="Dismiss" class="text-slate-500 hover:text-slate-700"
+            onclick="this.closest('[role=alert]')?.remove()">
+            ×
           </button>
         </div>
         {% endfor %}
       </div>
       {% endif %}
       {% endwith %}
-
       {% block content %}{% endblock %}
     </div>
   </main>
 
-  <!-- Footer (minimal) -->
-  <footer class="text-center text-xs text-slate-500 py-4 select-none">
+  <!-- Footer -->
+  <footer class="text-center text-xs text-slate-500 py-6 select-none">
     <div class="flex flex-col sm:flex-row justify-center gap-2 items-center">
       <div>&copy; 2025 Manual Review System, University of Bristol.</div>
       <div class="hidden sm:inline">| Academic use only</div>
@@ -66,38 +272,68 @@
         Contact: <a href="mailto:nd23942@bristol.ac.uk" class="underline text-sky-600 ml-1">Freddie</a>
       </div>
     </div>
-    <div class="mt-1 italic text-[11px]">
+    <div class="mt-1 italic">
       Platform for high-integrity, auditable biomedical assertion review. <span
         class="font-mono text-sky-600">#OpenScience</span>
     </div>
   </footer>
 
-  <!-- Minimal utility scripts for toast / confirm -->
+  <!-- Scripts -->
   <script>
-    function showToast(message, type = "info", duration = 3500) {
-      const root = document.getElementById("toast-root");
-      if (!root) return;
-      const colors = {
-        info: "bg-sky-50 border-sky-400 text-sky-800",
-        success: "bg-emerald-50 border-emerald-400 text-emerald-800",
-        error: "bg-rose-50 border-rose-400 text-rose-800",
-        warn: "bg-amber-50 border-amber-400 text-amber-800"
-      };
+    // Theme toggle with persistence
+    const root = document.documentElement;
+    const toggleBtn = document.getElementById("theme-toggle");
+    const themeIcon = document.getElementById("theme-icon");
+    const stored = localStorage.getItem("theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    let current = stored || (prefersDark ? "dark" : "light");
+    const applyTheme = (t) => {
+      root.setAttribute("data-theme", t);
+      localStorage.setItem("theme", t);
+      if (t === "dark") {
+        themeIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3a7 7 0 109.79 9.79z" />`; // moon
+      } else {
+        themeIcon.innerHTML = `<circle cx="12" cy="12" r="5"/> <path stroke-linecap="round" stroke-linejoin="round" d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M17.36 17.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M17.36 6.64l1.42-1.42"/>`; // sun
+      }
+    };
+    applyTheme(current);
+    toggleBtn?.addEventListener("click", () => {
+      current = current === "dark" ? "light" : "dark";
+      applyTheme(current);
+    });
+
+    // Toast helper
+    function showToast(message, type = "info", duration = 4000) {
+      const container = document.getElementById("toast-root");
+      if (!container) return;
       const toast = document.createElement("div");
-      toast.className = `flex items-start gap-3 p-3 border-l-4 rounded shadow ${colors[type] || colors.info} transition`;
-      toast.style.position = "relative";
+      toast.className = `toast ${type}`;
+      toast.setAttribute("role", "status");
       toast.innerHTML = `
-        <div class="flex-1 text-sm">${message}</div>
-        <button aria-label="close" class="text-xs font-bold ml-2">&times;</button>
+        <div class="flex-1">${message}</div>
+        <button aria-label="Close toast" class="ml-3 font-bold text-xs">&times;</button>
       `;
       toast.querySelector("button").addEventListener("click", () => toast.remove());
-      root.appendChild(toast);
-      setTimeout(() => { toast.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 500 }).onfinish = () => toast.remove(); }, duration);
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.transition = "opacity .3s ease, transform .3s ease";
+        toast.style.opacity = "0";
+        toast.style.transform = "translateY(-6px)";
+        setTimeout(() => toast.remove(), 300);
+      }, duration);
     }
-
-    // Expose for inline usage
     window.showToast = showToast;
+
+    // Accessibility: trap focus inside modals if any (basic)
+    document.addEventListener("dialog", (e) => {
+      // placeholder for future modal focus management
+    });
+
+    // Progressive enhancement: mark JS present
+    document.documentElement.classList.add("js");
   </script>
+
+  {% block scripts %}{% endblock %}
 </body>
 
 </html>

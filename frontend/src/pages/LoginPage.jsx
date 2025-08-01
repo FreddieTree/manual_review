@@ -1,23 +1,53 @@
-// src/pages/LoginPage.jsx
-import { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
-import { loginReviewer } from "../api";
+import { loginReviewer } from "../api"; // 第2节有实现
 import clsx from "clsx";
+import Button from "../components/ui/Button";
 
 const EMAIL_DOMAIN = "bristol.ac.uk";
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 2 * 60 * 1000; // 2 minutes
+const LOCKOUT_DURATION_MS = 2 * 60 * 1000;
 const NAME_REGEX = /^[a-zA-Z\s\-'.]{2,100}$/;
 const PREFIX_REGEX = /^[a-zA-Z0-9._%+-]{1,64}$/;
 
-// debounce hook
 function useDebounce(value, delay = 150) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
-    const tid = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(tid);
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
   }, [value, delay]);
   return debounced;
+}
+
+function HelpModal({ open, onClose, lockoutSeconds }) {
+  if (!open) return null;
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="help-title"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur px-4"
+    >
+      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-6  border-gray-200">
+        <div className="flex justify-between items-start">
+          <div id="help-title" className="text-lg font-bold text-gray-900">Need help?</div>
+          <button aria-label="Close help" onClick={onClose}
+            className="text-gray-400 hover:text-gray-700 ml-2 text-xl font-bold">×</button>
+        </div>
+        <div className="text-sm text-gray-700 space-y-2">
+          {lockoutSeconds > 0 && (
+            <div>You're temporarily locked out. Try again in <strong>{lockoutSeconds}s</strong>.</div>
+          )}
+          <div>If you believe this is a mistake, email the admin:</div>
+          <a href="mailto:review-admin@bristol.ac.uk" className="text-indigo-600 underline break-all">
+            review-admin@bristol.ac.uk
+          </a>
+          <div className="text-xs text-gray-500">Include your full name and attempted email for faster support.</div>
+        </div>
+        <Button fullWidth size="sm" variant="primary" onClick={onClose}>Close</Button>
+      </div>
+    </div>
+  );
 }
 
 export default function LoginPage() {
@@ -25,258 +55,323 @@ export default function LoginPage() {
   const navigate = useNavigate();
   const nameRef = useRef(null);
 
-  // load persisted values
-  const [name, setName] = useState(() => localStorage.getItem("login_name") || "");
-  const [emailPrefix, setEmailPrefix] = useState(() => localStorage.getItem("login_email_prefix") || "");
-  const debouncedEmailPrefix = useDebounce(emailPrefix, 150);
+  const [name, setName] = useState(() => sessionStorage.getItem("login_name") || "");
+  const [emailPrefix, setEmailPrefix] = useState(() => sessionStorage.getItem("login_email_prefix") || "");
+  const debouncedEmailPrefix = useDebounce(emailPrefix, 120);
 
-  const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+  const [globalError, setGlobalError] = useState("");
   const [loading, setLoading] = useState(false);
   const [attempts, setAttempts] = useState(0);
   const [lockedUntil, setLockedUntil] = useState(0);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [focusField, setFocusField] = useState(null);
 
-  // Focus name input on mount
-  useEffect(() => {
-    nameRef.current?.focus();
-  }, []);
-
-  // Persist name & prefix
-  useEffect(() => {
-    localStorage.setItem("login_name", name);
-  }, [name]);
-  useEffect(() => {
-    localStorage.setItem("login_email_prefix", emailPrefix);
-  }, [emailPrefix]);
-
-  // Lockout expiry
+  useEffect(() => { nameRef.current?.focus(); }, []);
+  useEffect(() => sessionStorage.setItem("login_name", name), [name]);
+  useEffect(() => sessionStorage.setItem("login_email_prefix", emailPrefix), [emailPrefix]);
   useEffect(() => {
     if (lockedUntil && Date.now() > lockedUntil) {
-      setLockedUntil(0);
-      setAttempts(0);
-      setError("");
+      setLockedUntil(0); setAttempts(0); setGlobalError("");
     }
   }, [lockedUntil]);
 
-  // Derived validity
-  const nameValid = useMemo(() => NAME_REGEX.test(name.trim()), [name]);
-  const prefixValid = useMemo(() => PREFIX_REGEX.test(debouncedEmailPrefix.trim()), [debouncedEmailPrefix]);
-  const email = `${emailPrefix.trim()}@${EMAIL_DOMAIN}`;
-
-  // Validate fields
-  const validateFields = useCallback(() => {
+  const validate = useCallback(() => {
     const errs = {};
-    if (!name.trim()) errs.name = "Name is required.";
-    else if (!NAME_REGEX.test(name.trim())) errs.name = "Invalid name (letters, spaces, -.' allowed).";
+    if (!name.trim()) errs.name = "Full name is required.";
+    else if (!NAME_REGEX.test(name.trim())) errs.name = "Invalid name.";
     if (!emailPrefix.trim()) errs.emailPrefix = "Email prefix is required.";
     else if (!PREFIX_REGEX.test(emailPrefix.trim())) errs.emailPrefix = "Invalid email prefix.";
     return errs;
-  }, [name, debouncedEmailPrefix]);
+  }, [name, emailPrefix]);
 
-  useEffect(() => {
-    setFieldErrors(validateFields());
-  }, [name, debouncedEmailPrefix, validateFields]);
+  useEffect(() => setFieldErrors(validate()), [name, debouncedEmailPrefix, validate]);
 
-  const canSubmit = useMemo(() => {
-    return Object.keys(fieldErrors).length === 0 && !loading && Date.now() >= lockedUntil;
-  }, [fieldErrors, loading, lockedUntil]);
+  const lockoutActive = lockedUntil > Date.now();
+  const lockoutSeconds = lockoutActive ? Math.ceil((lockedUntil - Date.now()) / 1000) : 0;
+  const canSubmit = useMemo(
+    () => !loading && !lockoutActive && Object.keys(fieldErrors).length === 0,
+    [fieldErrors, loading, lockoutActive]
+  );
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setError("");
-
-    if (Date.now() < lockedUntil) {
-      setError("Too many failed attempts. Please wait.");
+    setGlobalError("");
+    if (lockoutActive) {
+      setGlobalError("Too many failed attempts. Please wait.");
       return;
     }
-
-    const errs = validateFields();
+    const errs = validate();
     if (Object.keys(errs).length) {
       setFieldErrors(errs);
-      setError("Please fix the highlighted fields.");
+      setGlobalError("Please fix the highlighted fields.");
       return;
     }
-
     setLoading(true);
     try {
-      const res = await loginReviewer({ name: name.trim(), email: email.toLowerCase() });
-      // reset attempts on success
-      setAttempts(0);
-      setLockedUntil(0);
-      // redirect logic
+      const res = await loginReviewer({
+        name: name.trim(),
+        email: `${emailPrefix.trim()}@${EMAIL_DOMAIN}`.toLowerCase(),
+      });
+
+      if (!res || typeof res !== "object") {
+        setGlobalError("Server error: Unexpected response.");
+        return;
+      }
+      if (!res.success) {
+        setGlobalError(res?.message || "Login failed.");
+        return;
+      }
+
+      // 成功：分流跳转
       const params = new URLSearchParams(location.search);
       const next = params.get("next");
-      if (res.is_admin) {
-        navigate(next || "/admin");
-      } else if (res.no_more_tasks) {
-        navigate("/no_more_tasks");
-      } else {
-        navigate(next || "/review");
-      }
+      if (res.is_admin) navigate(next || "/admin", { replace: true });
+      else if (res.no_more_tasks) navigate("/no_more_tasks", { replace: true });
+      else navigate(next || "/review", { replace: true });
+
+      setAttempts(0); setLockedUntil(0); sessionStorage.clear();
     } catch (err) {
-      const msg = err?.message || "Login failed.";
-      setError(msg);
+      const msg = err?.response?.data?.message || err?.message || "Network/server error. Please try again.";
+      setGlobalError(msg);
       setAttempts((a) => a + 1);
-      if (attempts + 1 >= MAX_ATTEMPTS) {
-        setLockedUntil(Date.now() + LOCKOUT_DURATION_MS);
-      }
+      if (attempts + 1 >= MAX_ATTEMPTS) setLockedUntil(Date.now() + LOCKOUT_DURATION_MS);
     } finally {
       setLoading(false);
     }
   };
 
-  const clearEmailPrefix = () => setEmailPrefix("");
-
-  const lockoutSeconds = lockedUntil > Date.now() ? Math.ceil((lockedUntil - Date.now()) / 1000) : 0;
+  const onKeyDown = (e) => {
+    if (e.key === "Enter" && canSubmit) handleSubmit(e);
+    if (e.key === "Escape" && helpOpen) setHelpOpen(false);
+  };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-tr from-indigo-50 via-sky-50 to-white px-4">
-      <div
-        role="form"
-        aria-labelledby="login-heading"
-        className="relative w-full max-w-md bg-white shadow-2xl rounded-3xl p-10 flex flex-col gap-6"
-      >
-        <h1 id="login-heading" className="text-3xl font-extrabold text-indigo-700 text-center">
-          Reviewer Login
-        </h1>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#f8fafc] via-[#eef3fb] to-[#e5ebfa] px-4">
+      {/* WebKit autofill 颜色 */}
+      <style>{`
+        input:-webkit-autofill {
+          box-shadow: 0 0 0 1000px #fff inset !important;
+          -webkit-text-fill-color: #0f172a !important;
+          transition: background-color 5000s ease-in-out 0s;
+        }
+      `}</style>
 
-        {lockoutSeconds > 0 && (
-          <div
-            role="alert"
-            className="rounded-md bg-yellow-100 border border-yellow-300 p-3 text-sm flex justify-between items-center"
-          >
-            <div>
-              Too many failed attempts. Try again in {lockoutSeconds} second{lockoutSeconds !== 1 && "s"}.
-            </div>
-            <button
-              aria-label="Clear lockout"
-              onClick={() => {
-                setLockedUntil(0);
-                setAttempts(0);
-                setError("");
-              }}
-              className="text-xs underline"
-            >
-              Reset
-            </button>
-          </div>
-        )}
+      {/* 容器：80vw，且不超过 36rem（约 576px） */}
+      <div className="relative w-[80vw] max-w-[36rem] mx-auto z-10">
+        {/* 背景柔光 */}
+        <div className="pointer-events-none absolute -inset-6 -z-10">
+          <div className="absolute -top-10 -left-16 w-56 h-40 rounded-full bg-indigo-100/60 blur-2xl" />
+          <div className="absolute bottom-10 right-6 w-48 h-28 rounded-full bg-sky-100/50 blur-2xl" />
+        </div>
 
-        <form onSubmit={handleSubmit} noValidate className="space-y-5">
-          {/* Name */}
-          <div>
-            <label htmlFor="name" className="block font-medium mb-1">
-              Full Name
-            </label>
-            <input
-              id="name"
-              name="name"
-              type="text"
-              ref={nameRef}
-              aria-invalid={!!fieldErrors.name}
-              aria-describedby={fieldErrors.name ? "name-error" : undefined}
-              className={clsx(
-                "w-full px-4 py-2 rounded-xl border focus:outline-none transition shadow-sm",
-                fieldErrors.name
-                  ? "border-red-400 ring-1 ring-red-200"
-                  : "border-gray-200 focus:ring-2 focus:ring-indigo-300"
-              )}
-              placeholder="e.g. Alice Smith"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={loading || lockoutSeconds > 0}
-              autoComplete="name"
-              maxLength={100}
-            />
-            {fieldErrors.name && (
-              <p id="name-error" className="mt-1 text-xs text-red-600">
-                {fieldErrors.name}
+        {/* 卡片外壳：不放padding，只放外观 */}
+        <div
+          className={clsx(
+            "rounded-[1.5rem] bg-white/80 backdrop-blur-xl  border-white/70 shadow-2xl overflow-hidden",
+            "ring-1 ring-black/5",
+            "transition-all duration-300 hover:shadow-[0_18px_48px_rgba(43,93,215,0.16)]"
+          )}
+          style={{
+            boxShadow:
+              "0 14px 38px rgba(43,93,215,0.12), 0 2px 8px rgba(0,0,0,0.06), inset 0 0.5px 1.5px rgba(255,255,255,0.35)",
+            background:
+              "linear-gradient(135deg,rgba(255,255,255,0.96) 86%,rgba(242,246,255,0.92))",
+          }}
+        >
+          {/* 卡片内层：真正的内边距与间距 */}
+          <div className="p-10 sm:p-12 space-y-10">
+
+            {/* 标题区：层级更清晰 */}
+            <header className="text-center space-y-2">
+              <h1 className="text-[28px]/8 sm:text-3xl font-extrabold tracking-tight text-slate-900">
+                Assertion review system
+              </h1>
+              <p className="text-[15px] text-slate-500">
+                Sign in with Bristol email to continue reviewing.
               </p>
-            )}
-          </div>
+            </header>
 
-          {/* Email prefix */}
-          <div>
-            <label htmlFor="emailPrefix" className="block font-medium mb-1">
-              Bristol Email
-            </label>
-            <div className="flex rounded-xl overflow-hidden border transition shadow-sm">
-              <div className="relative flex-1">
-                <input
-                  id="emailPrefix"
-                  name="emailPrefix"
-                  type="text"
-                  aria-invalid={!!fieldErrors.emailPrefix}
-                  aria-describedby={fieldErrors.emailPrefix ? "email-error" : undefined}
-                  className={clsx(
-                    "w-full px-4 py-2 outline-none",
-                    fieldErrors.emailPrefix ? "border-red-400" : "border-transparent"
+            {/* 全局错误提示：与正文区分明显 */}
+            {(lockoutActive || globalError) && (
+              <div
+                role="alert"
+                aria-live="assertive"
+                className={clsx(
+                  "flex items-start gap-3 rounded-xl px-4 py-3",
+                  "ring-1",
+                  lockoutActive
+                    ? "bg-amber-50 text-amber-900 ring-amber-200"
+                    : "bg-rose-50 text-rose-800 ring-rose-200"
+                )}
+              >
+                <div className="flex-1 text-[14px]">
+                  {lockoutActive ? (
+                    <>Too many failed attempts. Try again in <strong>{lockoutSeconds}s</strong>.</>
+                  ) : (
+                    <>{globalError}</>
                   )}
-                  placeholder="yourid"
-                  value={emailPrefix}
-                  onChange={(e) => setEmailPrefix(e.target.value)}
-                  disabled={loading || lockoutSeconds > 0}
-                  autoComplete="username"
-                  maxLength={64}
-                />
-                {emailPrefix && !loading && (
+                </div>
+                <div className="shrink-0 flex items-center gap-2">
+                  {lockoutActive && (
+                    <button
+                      type="button"
+                      onClick={() => setHelpOpen(true)}
+                      className="text-indigo-600 text-xs font-semibold underline underline-offset-2"
+                    >
+                      Help
+                    </button>
+                  )}
                   <button
                     type="button"
-                    aria-label="Clear prefix"
-                    onClick={clearEmailPrefix}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                    aria-label="Dismiss"
+                    onClick={() => { setLockedUntil(0); setAttempts(0); setGlobalError(""); }}
+                    className="text-slate-400 hover:text-slate-700 text-lg leading-none"
                   >
                     ×
                   </button>
+                </div>
+              </div>
+            )}
+
+            {/* 表单：字段间距更大，说明文字与错误提示风格化 */}
+            <form
+              onSubmit={handleSubmit}
+              noValidate
+              autoComplete="on"
+              onKeyDown={onKeyDown}
+              className="space-y-7"
+            >
+              {/* Full Name */}
+              <div className="space-y-2">
+                <label htmlFor="name" className="block text-[18px] font-bold text-slate-700">
+                  Full Name
+                </label>
+                <input
+                  id="name"
+                  ref={nameRef}
+                  type="text"
+                  placeholder="Freddie"
+                  className={clsx(
+                    "w-full rounded-xl px-4 py-3 text-[15px] font-medium",
+                    "bg-white/95 placeholder-slate-400",
+                    "",
+                    fieldErrors.name
+                      ? "ring-rose-300 focus:ring-rose-400"
+                      : "ring-slate-200 focus:ring-indigo-300",
+                    "focus:outline-none transition-shadow"
+                  )}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onFocus={() => setFocusField("name")}
+                  onBlur={() => setFocusField(null)}
+                  disabled={loading || lockoutActive}
+                  aria-invalid={!!fieldErrors.name}
+                  aria-describedby={fieldErrors.name ? "name-error" : undefined}
+                  autoComplete="name"
+                />
+                {/* 说明/错误分层：提示为灰、错误为红且更小更紧凑 */}
+                {fieldErrors.name ? (
+                  <p id="name-error" className="text-[12px] text-rose-600/90 font-medium">
+                    {fieldErrors.name}
+                  </p>
+                ) : (
+                  <p className="text-[12px] text-slate-400">
+                    Use your real name as it appears in the reviewer list.
+                  </p>
                 )}
               </div>
-              <div className="px-3 py-2 bg-indigo-600 text-white select-none text-sm font-medium flex items-center">
-                @{EMAIL_DOMAIN}
+
+              {/* Bristol Email */}
+              <div className="space-y-2">
+                <label htmlFor="emailPrefix" className="block text-[18px] font-bold text-slate-700">
+                  Bristol Email
+                </label>
+                <div
+                  className={clsx(
+                    "flex items-stretch rounded-xl bg-white/95 overflow-hidden",
+                    fieldErrors.emailPrefix
+                      ? "ring-rose-300 focus-within:ring-rose-400"
+                      : "ring-slate-200 focus-within:ring-indigo-300",
+                    "transition-shadow"
+                  )}
+                >
+                  <input
+                    id="emailPrefix"
+                    type="text"
+                    placeholder="ab12345"
+                    className={clsx(
+                      "flex-1 px-4 py-3 text-[15px] font-medium bg-transparent outline-none",
+                      "placeholder-slate-400"
+                    )}
+                    value={emailPrefix}
+                    onChange={(e) => setEmailPrefix(e.target.value)}
+                    onFocus={() => setFocusField("email")}
+                    onBlur={() => setFocusField(null)}
+                    disabled={loading || lockoutActive}
+                    aria-invalid={!!fieldErrors.emailPrefix}
+                    aria-describedby={fieldErrors.emailPrefix ? "email-error" : "email-hint"}
+                    autoComplete="username"
+                  />
+                  <span className="flex items-center px-4 text-slate-500 font-mono text-[15px] select-none ">
+                    @{EMAIL_DOMAIN}
+                  </span>
+                </div>
+                {fieldErrors.emailPrefix ? (
+                  <p id="email-error" className="text-[12px] text-rose-600/90 font-medium">
+                    {fieldErrors.emailPrefix}
+                  </p>
+                ) : (
+                  <p id="email-hint" className="text-[12px] text-slate-400">
+                    Enter only the ID part before “@”. We’ll append the domain.
+                  </p>
+                )}
               </div>
-            </div>
-            {fieldErrors.emailPrefix && (
-              <p id="email-error" className="mt-1 text-xs text-red-600">
-                {fieldErrors.emailPrefix}
+
+              {/* 登录按钮 */}
+              <div className="pt-2">
+                <Button
+                  type="submit"
+                  fullWidth
+                  size="xl"
+                  loading={loading}
+                  disabled={!canSubmit}
+                  aria-label="Login"
+                  className={clsx(
+                    "rounded-xl font-semibold py-4 text-lg tracking-wide shadow-lg",
+                    canSubmit
+                      ? "bg-gradient-to-r from-indigo-500 to-sky-500 text-white hover:scale-[1.02] active:scale-[0.99]"
+                      : "bg-slate-100 text-slate-400 cursor-not-allowed"
+                  )}
+                  style={{
+                    minHeight: "56px",
+                    boxShadow:
+                      "0 2px 18px rgba(99,102,241,0.12), 0 1.5px 7px rgba(0,0,0,0.05)",
+                  }}
+                >
+                  {loading ? "Logging in…" : "Login"}
+                </Button>
+              </div>
+            </form>
+
+            {/* 页脚说明：更轻更小 */}
+            <footer className="text-center">
+              <p className="text-[12px] text-slate-500">
+                Only approved Bristol reviewers may log in.
               </p>
-            )}
+              <p className="text-[12px] text-slate-400 mt-1">
+                Your session is private and secure.
+              </p>
+            </footer>
           </div>
-
-          {/* Global error */}
-          {error && (
-            <div
-              role="alert"
-              className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-md p-3 text-sm text-red-700"
-            >
-              <div className="flex-1">{error}</div>
-            </div>
-          )}
-
-          {/* Submit */}
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            aria-disabled={!canSubmit}
-            className={clsx(
-              "w-full flex justify-center items-center gap-2 py-3 rounded-xl font-semibold transition shadow",
-              !canSubmit
-                ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                : "bg-gradient-to-r from-indigo-600 to-sky-500 text-white hover:scale-[1.02]"
-            )}
-          >
-            {loading ? (
-              <>
-                <span className="loader-border inline-block w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin" />
-                Logging in…
-              </>
-            ) : (
-              "Login"
-            )}
-          </button>
-        </form>
-
-        <div className="text-xs text-center text-gray-500">
-          Only approved Bristol reviewers may log in. Your session is kept for the duration of review.
         </div>
+
+        {/* 帮助弹窗 */}
+        <HelpModal
+          open={helpOpen}
+          onClose={() => setHelpOpen(false)}
+          lockoutSeconds={lockoutSeconds}
+        />
       </div>
     </div>
   );

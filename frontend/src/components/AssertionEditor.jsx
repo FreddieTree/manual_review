@@ -1,8 +1,8 @@
 // src/components/AssertionEditor.jsx
-import { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import clsx from "clsx";
 import PropTypes from "prop-types";
 import AssertionForm from "./AssertionForm";
-import { useTheme } from "../hooks/useTheme";
 import Button from "./ui/Button";
 import Select from "./ui/Select";
 import Badge from "./ui/Badge";
@@ -16,17 +16,23 @@ import {
     deriveOverallDecision,
 } from "../utils";
 
-/** Compact decision badge */
+/** DecisionBadge now maps to semantic badge props */
 const DecisionBadge = ({ decision }) => {
     const mapping = {
-        accept: { label: "ACCEPT", tone: "success" },
-        modify: { label: "MODIFY", tone: "warning" },
-        reject: { label: "REJECT", tone: "danger" },
-        uncertain: { label: "UNCERTAIN", tone: "muted" },
+        accept: { label: "Accept", color: "success", variant: "solid" },
+        modify: { label: "Modify", color: "warning", variant: "subtle" },
+        reject: { label: "Reject", color: "danger", variant: "solid" },
+        uncertain: { label: "Uncertain", color: "warning", variant: "outline" },
     };
     const info = mapping[decision] || mapping.uncertain;
     return (
-        <Badge variant={info.tone} className="uppercase tracking-wider px-3">
+        <Badge
+            variant={info.variant}
+            color={info.color}
+            size="sm"
+            className="uppercase tracking-wider"
+            aria-label={`Decision: ${info.label}`}
+        >
             {info.label}
         </Badge>
     );
@@ -36,11 +42,15 @@ DecisionBadge.propTypes = {
     decision: PropTypes.string.isRequired,
 };
 
-/** Pill for subject/predicate/object with validity coloring */
+/** Pill with validity visual hint */
 const Pill = ({ children, valid }) => (
     <div
-        className={`inline-flex items-center px-2 py-1 rounded-full text-[11px] font-medium mr-2 ${valid ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
-            }`}
+        className={clsx(
+            "inline-flex items-center px-2 py-1 rounded-full text-[11px] font-medium mr-2",
+            valid
+                ? "bg-emerald-100 text-emerald-800"
+                : "bg-red-100 text-red-600"
+        )}
     >
         {children}
     </div>
@@ -51,16 +61,30 @@ Pill.propTypes = {
     valid: PropTypes.bool,
 };
 
+function shallowReviewStateEqual(a = [], b = []) {
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+        if (
+            a[i]?.decision !== b[i]?.decision ||
+            a[i]?.comment !== b[i]?.comment ||
+            !!a[i]?.isModified !== !!b[i]?.isModified
+        ) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /**
- * Props:
- *  - idx: zero-based sentence index
- *  - sentence: the sentence string
- *  - assertions: array of assertion objects
- *  - reviewState: external review state map per assertion index
- *  - onAddAssertion(sentenceIdx, assertion)
- *  - onModifyAssertion(sentenceIdx, assertionIdx, updatedAssertion)
- *  - onDeleteAssertion(sentenceIdx, assertionIdx)
- *  - onReviewChange(sentenceIdx, assertionIdx, newReviewState)
+ * AssertionEditor props:
+ *  idx: zero-based sentence index
+ *  sentence: the sentence string
+ *  assertions: array of assertion objects
+ *  reviewState: external review state map per assertion index (object like {0:{decision,comment,isModified}, ...})
+ *  onAddAssertion(sentenceIdx, assertion)
+ *  onModifyAssertion(sentenceIdx, assertionIdx, updatedAssertion)
+ *  onDeleteAssertion(sentenceIdx, assertionIdx)
+ *  onReviewChange(sentenceIdx, assertionIdx, newReviewState)
  */
 export default function AssertionEditor({
     idx,
@@ -72,23 +96,25 @@ export default function AssertionEditor({
     onDeleteAssertion,
     onReviewChange,
 }) {
-    const { resolvedTheme } = useTheme();
-    const sentenceIndex = idx + 1; // human display
-    const [localReviews, setLocalReviews] = useState(
+    const sentenceIndex = idx + 1; // display 1-based
+    const [localReviews, setLocalReviews] = useState(() =>
         assertions.map((_, i) => reviewState[i] || { decision: "accept", comment: "", isModified: false })
     );
     const [showAddForm, setShowAddForm] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState({ open: false, assertionIdx: null });
 
-    // sync external reviewState / assertions length
+    const prevExternalRef = useRef(reviewState);
+    // Sync external reviewState when it changes (shallow compare)
     useEffect(() => {
-        setLocalReviews(
-            assertions.map((_, i) => reviewState[i] || localReviews[i] || { decision: "accept", comment: "", isModified: false })
-        );
+        const externalArr = assertions.map((_, i) => reviewState[i] || { decision: "accept", comment: "", isModified: false });
+        if (!shallowReviewStateEqual(localReviews, externalArr)) {
+            setLocalReviews(externalArr);
+        }
+        prevExternalRef.current = reviewState;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [assertions.length, JSON.stringify(reviewState)]);
+    }, [Object.keys(reviewState).length, assertions.length]);
 
-    // derive overall decision for this sentence block
+    // Derive per-sentence overall decision
     const overallDecision = useMemo(() => {
         const existingReviews = localReviews.map((r) => ({
             review: r.decision,
@@ -98,32 +124,34 @@ export default function AssertionEditor({
         return deriveOverallDecision({ existingReviews, addedAssertions });
     }, [localReviews, assertions]);
 
-    // propagate upward when a review changes
+    // Helper to update review internally and bubble up
     const updateReviewState = useCallback(
         (assertionIdx, patch) => {
             setLocalReviews((prev) => {
                 const next = [...prev];
-                next[assertionIdx] = { ...next[assertionIdx], ...patch };
-                onReviewChange?.(idx + 1, assertionIdx, next[assertionIdx]);
+                const existing = next[assertionIdx] || { decision: "accept", comment: "", isModified: false };
+                const updated = { ...existing, ...patch };
+                next[assertionIdx] = updated;
+                onReviewChange?.(sentenceIndex, assertionIdx, updated);
                 return next;
             });
         },
-        [onReviewChange, idx]
+        [onReviewChange, sentenceIndex]
     );
 
-    const handleDecisionChange = (i, decision) => {
-        updateReviewState(i, { decision });
+    const handleDecisionChange = (i, value) => {
+        updateReviewState(i, { decision: value });
     };
 
-    const handleCommentChange = (i, comment) => {
-        updateReviewState(i, { comment });
+    const handleCommentChange = (i, value) => {
+        updateReviewState(i, { comment: value });
     };
 
     const markModified = (i) => {
         updateReviewState(i, { isModified: true, decision: "modify" });
     };
 
-    const handleDeleteClick = (i) => {
+    const requestDelete = (i) => {
         setConfirmDelete({ open: true, assertionIdx: i });
     };
 
@@ -138,25 +166,25 @@ export default function AssertionEditor({
         });
     };
 
-    const hasAssertions = (assertions || []).length > 0;
+    const hasAssertions = Array.isArray(assertions) && assertions.length > 0;
 
     return (
-        <div className="relative bg-white rounded-3xl shadow-card border border-gray-200 p-6 flex flex-col gap-6">
-            {/* Header: Sentence + overall decision */}
+        <div className="relative bg-white dark:bg-[#1f2937] rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-6 transition-all">
+            {/* Header */}
             <div className="flex flex-col lg:flex-row justify-between items-start gap-4">
                 <div className="flex gap-4 flex-1 flex-wrap">
                     <div className="flex-shrink-0">
-                        <div className="text-lg font-semibold text-indigo-700">S{sentenceIndex}</div>
+                        <div className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">S{sentenceIndex}</div>
                     </div>
-                    <p className="flex-1 text-base text-gray-800 leading-relaxed break-words">{sentence}</p>
+                    <p className="flex-1 text-base text-gray-800 dark:text-gray-100 leading-relaxed break-words">{sentence}</p>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
-                    <div className="text-xs text-gray-500 mr-1">Sentence decision:</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mr-1">Sentence decision:</div>
                     <DecisionBadge decision={overallDecision} />
                 </div>
             </div>
 
-            {/* Existing Assertions */}
+            {/* Existing assertions */}
             <div className="flex flex-col gap-5">
                 {hasAssertions ? (
                     assertions.map((a, i) => {
@@ -170,23 +198,23 @@ export default function AssertionEditor({
                         return (
                             <div
                                 key={i}
-                                className="flex flex-col lg:flex-row gap-6 p-4 bg-gray-50 rounded-xl border border-gray-200"
+                                className="flex flex-col lg:flex-row gap-6 p-4 bg-gray-50 dark:bg-[#111827] rounded-xl border border-gray-200 dark:border-gray-600"
                                 aria-label={`Assertion ${i + 1}`}
                             >
-                                {/* Content summary */}
                                 <div className="flex-1 grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-4">
+                                    {/* Left block: assertion content */}
                                     <div className="flex flex-col gap-2">
-                                        <div className="flex items-center gap-2 flex-wrap">
-                                            <div className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-400">
                                                 Assertion #{i + 1}
                                             </div>
                                             {a.is_new && (
-                                                <Badge variant="accent" className="text-[10px]">
+                                                <Badge variant="solid" color="primary" size="sm">
                                                     New
                                                 </Badge>
                                             )}
                                             {review.isModified && (
-                                                <Badge variant="warning" className="text-[10px]">
+                                                <Badge variant="subtle" color="warning" size="sm">
                                                     Edited
                                                 </Badge>
                                             )}
@@ -195,34 +223,32 @@ export default function AssertionEditor({
                                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mt-2">
                                             {/* Subject */}
                                             <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-[12px] font-semibold text-gray-700">Subject:</div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">Subject:</div>
                                                     <Pill valid={subjectMatch}>{a.subject}</Pill>
                                                     <div
-                                                        className={`text-[10px] italic ${subjectTypeValid ? "text-gray-500" : "text-red-600"
-                                                            }`}
+                                                        className={clsx(
+                                                            "text-[10px] italic",
+                                                            subjectTypeValid ? "text-gray-500 dark:text-gray-400" : "text-red-500"
+                                                        )}
                                                     >
                                                         ({a.subject_type || "?"})
                                                     </div>
                                                 </div>
                                                 <div className="mt-1 flex flex-col gap-1">
                                                     {!subjectMatch && (
-                                                        <div className="text-[11px] text-red-600">
-                                                            Exact match missing in sentence
-                                                        </div>
+                                                        <div className="text-[11px] text-red-600">Exact match missing in sentence</div>
                                                     )}
                                                     {!subjectTypeValid && (
-                                                        <div className="text-[11px] text-red-600">
-                                                            Unsupported subject type
-                                                        </div>
+                                                        <div className="text-[11px] text-red-600">Unsupported subject type</div>
                                                     )}
                                                 </div>
                                             </div>
 
                                             {/* Predicate */}
                                             <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-[12px] font-semibold text-gray-700">Predicate:</div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">Predicate:</div>
                                                     <Pill valid={predicateValid}>
                                                         {a.negation ? `neg_${a.predicate}` : a.predicate}
                                                     </Pill>
@@ -236,57 +262,56 @@ export default function AssertionEditor({
 
                                             {/* Object */}
                                             <div className="flex flex-col">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="text-[12px] font-semibold text-gray-700">Object:</div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">Object:</div>
                                                     <Pill valid={objectMatch}>{a.object}</Pill>
                                                     <div
-                                                        className={`text-[10px] italic ${objectTypeValid ? "text-gray-500" : "text-red-600"
-                                                            }`}
+                                                        className={clsx(
+                                                            "text-[10px] italic",
+                                                            objectTypeValid ? "text-gray-500 dark:text-gray-400" : "text-red-500"
+                                                        )}
                                                     >
                                                         ({a.object_type || "?"})
                                                     </div>
                                                 </div>
                                                 <div className="mt-1 flex flex-col gap-1">
                                                     {!objectMatch && (
-                                                        <div className="text-[11px] text-red-600">
-                                                            Exact match missing in sentence
-                                                        </div>
+                                                        <div className="text-[11px] text-red-600">Exact match missing in sentence</div>
                                                     )}
                                                     {!objectTypeValid && (
-                                                        <div className="text-[11px] text-red-600">
-                                                            Unsupported object type
-                                                        </div>
+                                                        <div className="text-[11px] text-red-600">Unsupported object type</div>
                                                     )}
                                                 </div>
                                             </div>
                                         </div>
                                         {a.comment && (
-                                            <div className="text-xs text-gray-600 mt-2">
+                                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-2">
                                                 Original comment: {a.comment}
                                             </div>
                                         )}
                                     </div>
 
-                                    {/* Review controls (right side in wide) */}
-                                    <div className="flex flex-col gap-4 min-w-[220px]">
+                                    {/* Right block: review controls */}
+                                    <div className="flex flex-col gap-4 min-w-[240px]">
                                         <div className="flex flex-col">
-                                            <label className="text-[11px] font-semibold text-gray-600 mb-1">
+                                            <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
                                                 Decision
                                             </label>
                                             <Select
                                                 aria-label={`Decision for assertion ${i + 1}`}
                                                 value={review.decision}
                                                 onChange={(e) => handleDecisionChange(i, e.target.value)}
-                                                options={[
-                                                    { label: "Accept", value: "accept" },
-                                                    { label: "Modify", value: "modify" },
-                                                    { label: "Reject", value: "reject" },
-                                                    { label: "Uncertain", value: "uncertain" },
-                                                ]}
-                                            />
+                                                variant={review.decision === "reject" ? "error" : "default"}
+                                                size="sm"
+                                            >
+                                                <option value="accept">Accept</option>
+                                                <option value="modify">Modify</option>
+                                                <option value="reject">Reject</option>
+                                                <option value="uncertain">Uncertain</option>
+                                            </Select>
                                         </div>
                                         <div className="flex flex-col">
-                                            <label className="text-[11px] font-semibold text-gray-600 mb-1">
+                                            <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
                                                 Reviewer note
                                             </label>
                                             <Input
@@ -294,12 +319,13 @@ export default function AssertionEditor({
                                                 placeholder="Optional note"
                                                 value={review.comment}
                                                 onChange={(e) => handleCommentChange(i, e.target.value)}
+                                                size="sm"
                                             />
                                         </div>
-                                        <div className="flex gap-2 mt-1">
+                                        <div className="flex gap-2 mt-1 flex-wrap">
                                             <Button
                                                 size="sm"
-                                                variant="outline"
+                                                variant="secondary"
                                                 onClick={() => {
                                                     markModified(i);
                                                     onModifyAssertion?.(sentenceIndex, i, {
@@ -312,8 +338,8 @@ export default function AssertionEditor({
                                             </Button>
                                             <Button
                                                 size="sm"
-                                                variant="dangerOutline"
-                                                onClick={() => handleDeleteClick(i)}
+                                                variant="destructive"
+                                                onClick={() => requestDelete(i)}
                                             >
                                                 Delete
                                             </Button>
@@ -324,16 +350,18 @@ export default function AssertionEditor({
                         );
                     })
                 ) : (
-                    <div className="text-sm text-gray-600 italic">No existing assertions.</div>
+                    <div className="text-sm text-gray-500 italic">No existing assertions.</div>
                 )}
             </div>
 
-            {/* Divider + new assertion */}
-            <div className="pt-4 border-t border-dashed border-gray-200">
-                <div className="flex justify-between items-center mb-3">
-                    <div className="text-sm font-semibold text-gray-700">Add / Suggest New Assertion</div>
-                    <div>
-                        <Button size="sm" onClick={() => setShowAddForm((s) => !s)} variant="secondary">
+            {/* New assertion area */}
+            <div className="pt-4 border-t border-dashed border-gray-200 dark:border-gray-600">
+                <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
+                    <div className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+                        Add / Suggest New Assertion
+                    </div>
+                    <div className="flex gap-2">
+                        <Button size="sm" variant="primary" onClick={() => setShowAddForm((s) => !s)}>
                             {showAddForm ? "Hide" : "Add Assertion"}
                         </Button>
                     </div>
@@ -345,8 +373,8 @@ export default function AssertionEditor({
                             newAssertion.is_new = true;
                             onAddAssertion?.(sentenceIndex, newAssertion);
                             setShowAddForm(false);
-                            // flag new assertion in review state
-                            updateReviewState((assertions || []).length, {
+                            // ensure review state reflects new assertion
+                            updateReviewState(assertions.length, {
                                 decision: "accept",
                                 comment: newAssertion.comment || "",
                                 isModified: true,
@@ -355,11 +383,13 @@ export default function AssertionEditor({
                         submitLabel="Add Assertion"
                     />
                 ) : (
-                    <div className="text-xs text-gray-500">You can propose a new assertion based on the sentence above.</div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400">
+                        You can propose a new assertion based on the sentence above.
+                    </div>
                 )}
             </div>
 
-            {/* Delete confirmation */}
+            {/* Delete confirmation modal */}
             <ConfirmModal
                 open={confirmDelete.open}
                 title="Delete Assertion"

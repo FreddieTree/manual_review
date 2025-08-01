@@ -1,24 +1,24 @@
 // src/components/SentenceBlock.jsx
-import { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
+import PropTypes from "prop-types";
+import clsx from "clsx";
+
 import AssertionForm from "./AssertionForm";
 import DecisionBadge from "./DecisionBadge";
-import { Button } from "./ui/Button";
-import { Input } from "./ui/Input";
-import { Select } from "./ui/Select";
-import { Badge } from "./ui/Badge";
-import { isPerfectMatch, PREDICATE_WHITELIST, ENTITY_TYPE_WHITELIST, deriveOverallDecision } from "../utils";
-import clsx from "clsx";
+import Button from "./ui/Button";
+import Input from "./ui/Input";
+import Select from "./ui/Select";
+import Badge from "./ui/Badge";
+
+import {
+  isPerfectMatch,
+  PREDICATE_WHITELIST,
+  ENTITY_TYPE_WHITELIST,
+  deriveOverallDecision,
+} from "../utils";
 
 /**
  * SentenceBlock
- *
- * Props:
- *  - sentenceObj: { sentence_index, sentence, assertions: [...] }
- *  - onAddAssertion(sentenceIndex, assertion)
- *  - onModifyAssertion(sentenceIndex, assertionIndex, updatedAssertion)
- *  - onDeleteAssertion(sentenceIndex, assertionIndex)
- *  - reviewState: { [assertionIndex]: { decision, comment, isModified } }
- *  - onReviewChange(sentenceIndex, assertionIndex, newReviewState)
  */
 export default function SentenceBlock({
   sentenceObj,
@@ -34,20 +34,18 @@ export default function SentenceBlock({
     assertions = [],
   } = sentenceObj;
 
-  // Local mirror of review state per assertion, initialize from prop
-  const [localReviews, setLocalReviews] = useState(
+  // Local reviews mirror; keep in sync when props change
+  const [localReviews, setLocalReviews] = useState(() =>
     assertions.map((_, i) => reviewState[i] || { decision: "accept", comment: "", isModified: false })
   );
 
-  // Sync when number of assertions changes or external reviewState changes
   useEffect(() => {
     setLocalReviews((prev) =>
       assertions.map((_, i) => reviewState[i] || prev[i] || { decision: "accept", comment: "", isModified: false })
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [assertions.length, JSON.stringify(reviewState)]);
+  }, [assertions.length, reviewState]);
 
-  // Derive overall decision for this sentence (based on per-assertion reviews and added assertions)
+  // Derive overall decision
   const overallDecision = useMemo(() => {
     const existingReviews = localReviews.map((r) => ({
       review: r.decision,
@@ -57,12 +55,15 @@ export default function SentenceBlock({
     return deriveOverallDecision({ existingReviews, addedAssertions });
   }, [localReviews, assertions]);
 
-  // Handlers to keep parent updated
+  // Update helpers
   const updateReview = useCallback(
     (assertIdx, patch) => {
       setLocalReviews((prev) => {
         const next = [...prev];
-        next[assertIdx] = { ...(next[assertIdx] || { decision: "accept", comment: "", isModified: false }), ...patch };
+        next[assertIdx] = {
+          ...(next[assertIdx] || { decision: "accept", comment: "", isModified: false }),
+          ...patch,
+        };
         onReviewChange?.(sentenceIndex, assertIdx, next[assertIdx]);
         return next;
       });
@@ -74,29 +75,36 @@ export default function SentenceBlock({
   const handleCommentChange = (i, value) => updateReview(i, { comment: value });
   const markModified = (i) => updateReview(i, { isModified: true, decision: "modify" });
 
-  // Accessibility: generate ids
-  const getSelectId = (type, i) => `sentence-${sentenceIndex}-assertion-${i}-${type}`;
+  // ids for accessibility
+  const getId = (type, i) => `sentence-${sentenceIndex}-assertion-${i}-${type}`;
 
   return (
-    <div className="relative bg-white rounded-3xl shadow-card border border-gray-200 p-6 flex flex-col gap-6">
+    <div className="relative bg-white dark:bg-[#1f2937] rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-6">
       {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start gap-4">
         <div className="flex gap-4 flex-1 flex-wrap">
           <div className="flex-shrink-0">
-            <Badge variant="tag" className="text-sm">
+            <Badge variant="subtle" color="gray" className="uppercase text-xs">
               S{sentenceIndex}
             </Badge>
           </div>
-          <p className="flex-1 text-base text-gray-800 leading-relaxed break-words">{sentence}</p>
+          <p className="flex-1 text-base text-gray-800 dark:text-gray-100 leading-relaxed break-words">
+            {sentence}
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
-          <div className="text-xs text-gray-500 mr-1">Sentence decision:</div>
+          <div className="text-xs text-gray-500 dark:text-gray-400 mr-1">Sentence decision:</div>
           <DecisionBadge decision={overallDecision} />
         </div>
       </div>
 
-      {/* Assertions */}
+      {/* Assertions list */}
       <div className="flex flex-col gap-5">
+        {assertions.length === 0 && (
+          <div className="text-sm text-gray-600 dark:text-gray-300 italic px-4 py-3 bg-gray-50 dark:bg-[#111f33] rounded-lg border border-dashed border-gray-200 dark:border-gray-600">
+            No existing assertions. You can add one below.
+          </div>
+        )}
         {assertions.map((a, i) => {
           const subjectMatch = isPerfectMatch(sentence, a.subject);
           const objectMatch = isPerfectMatch(sentence, a.object);
@@ -108,24 +116,43 @@ export default function SentenceBlock({
           return (
             <div
               key={i}
-              className="flex flex-col lg:flex-row gap-6 p-4 bg-gray-50 rounded-xl border border-gray-200"
+              className="flex flex-col lg:flex-row gap-6 p-4 bg-gray-50 dark:bg-[#111f33] rounded-xl border border-gray-200 dark:border-gray-600"
               aria-label={`Assertion ${i + 1}`}
             >
               {/* Left: assertion content */}
               <div className="flex-1 grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr] gap-4">
-                {/* Subject block */}
+                {/* Subject */}
                 <div className="flex flex-col">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <div className="text-[12px] font-semibold text-gray-700">Subject</div>
-                    <div className={clsx("px-2 py-1 rounded-full text-sm font-medium", subjectMatch ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600")}>
-                      {a.subject}
+                  <div className="flex items-start gap-2 mb-1 flex-wrap">
+                    <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">Subject</div>
+                    <div
+                      className={clsx(
+                        "px-2 py-1 rounded-full text-sm font-medium truncate",
+                        subjectMatch ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
+                      )}
+                    >
+                      {a.subject || "—"}
                     </div>
-                    <div className={clsx("text-[10px] italic", subjectTypeValid ? "text-gray-500" : "text-red-600")}>
+                    <div
+                      className={clsx(
+                        "text-[10px] italic",
+                        subjectTypeValid ? "text-gray-500 dark:text-gray-400" : "text-red-600"
+                      )}
+                    >
                       ({a.subject_type || "?"})
                     </div>
                     {a.is_new && (
                       <div className="ml-auto">
-                        <Badge variant="primary" className="text-[10px]">New</Badge>
+                        <Badge variant="solid" color="primary" className="text-[10px]">
+                          New
+                        </Badge>
+                      </div>
+                    )}
+                    {review.isModified && (
+                      <div>
+                        <Badge variant="subtle" color="warning" className="text-[10px]">
+                          Edited
+                        </Badge>
                       </div>
                     )}
                   </div>
@@ -139,12 +166,17 @@ export default function SentenceBlock({
                   </div>
                 </div>
 
-                {/* Predicate block */}
+                {/* Predicate */}
                 <div className="flex flex-col">
                   <div className="flex items-center gap-2 mb-1">
-                    <div className="text-[12px] font-semibold text-gray-700">Predicate</div>
-                    <div className={clsx("px-2 py-1 rounded-full text-sm font-medium", predicateValid ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600")}>
-                      {a.negation ? `neg_${a.predicate}` : a.predicate}
+                    <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">Predicate</div>
+                    <div
+                      className={clsx(
+                        "px-2 py-1 rounded-full text-sm font-medium truncate",
+                        predicateValid ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
+                      )}
+                    >
+                      {a.negation ? `neg_${a.predicate}` : a.predicate || "—"}
                     </div>
                   </div>
                   {!predicateValid && (
@@ -152,14 +184,24 @@ export default function SentenceBlock({
                   )}
                 </div>
 
-                {/* Object block */}
+                {/* Object */}
                 <div className="flex flex-col">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <div className="text-[12px] font-semibold text-gray-700">Object</div>
-                    <div className={clsx("px-2 py-1 rounded-full text-sm font-medium", objectMatch ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600")}>
-                      {a.object}
+                  <div className="flex items-start gap-2 mb-1 flex-wrap">
+                    <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">Object</div>
+                    <div
+                      className={clsx(
+                        "px-2 py-1 rounded-full text-sm font-medium truncate",
+                        objectMatch ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
+                      )}
+                    >
+                      {a.object || "—"}
                     </div>
-                    <div className={clsx("text-[10px] italic", objectTypeValid ? "text-gray-500" : "text-red-600")}>
+                    <div
+                      className={clsx(
+                        "text-[10px] italic",
+                        objectTypeValid ? "text-gray-500 dark:text-gray-400" : "text-red-600"
+                      )}
+                    >
                       ({a.object_type || "?"})
                     </div>
                   </div>
@@ -177,38 +219,37 @@ export default function SentenceBlock({
               {/* Right: review controls */}
               <div className="flex-shrink-0 flex flex-col gap-3 w-full sm:w-auto min-w-[220px]">
                 <div className="flex flex-col">
-                  <label htmlFor={getSelectId("decision", i)} className="text-[11px] font-semibold text-gray-600 mb-1">
+                  <label htmlFor={getId("decision", i)} className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
                     Decision
                   </label>
                   <Select
-                    id={getSelectId("decision", i)}
+                    id={getId("decision", i)}
                     aria-label={`Decision for assertion ${i + 1}`}
                     value={review.decision}
                     onChange={(e) => handleDecisionChange(i, e.target.value)}
                     className="w-full"
-                    options={[
-                      { label: "Accept", value: "accept" },
-                      { label: "Modify", value: "modify" },
-                      { label: "Reject", value: "reject" },
-                      { label: "Uncertain", value: "uncertain" },
-                    ]}
-                  />
+                  >
+                    <option value="accept">Accept</option>
+                    <option value="modify">Modify</option>
+                    <option value="reject">Reject</option>
+                    <option value="uncertain">Uncertain</option>
+                  </Select>
                 </div>
                 <div className="flex flex-col">
-                  <label htmlFor={getSelectId("comment", i)} className="text-[11px] font-semibold text-gray-600 mb-1">
+                  <label htmlFor={getId("comment", i)} className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
                     Reviewer note
                   </label>
                   <Input
-                    id={getSelectId("comment", i)}
+                    id={getId("comment", i)}
                     placeholder="Optional note"
                     value={review.comment}
                     onChange={(e) => handleCommentChange(i, e.target.value)}
                     className="w-full"
                   />
                 </div>
-                <div className="flex gap-2 mt-2">
+                <div className="flex gap-2 mt-1">
                   <Button
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     onClick={() => {
                       markModified(i);
@@ -222,7 +263,7 @@ export default function SentenceBlock({
                     Edit
                   </Button>
                   <Button
-                    variant="destructive-outline"
+                    variant="destructive"
                     size="sm"
                     onClick={() => onDeleteAssertion?.(sentenceIndex, i)}
                     className="flex-1"
@@ -236,10 +277,10 @@ export default function SentenceBlock({
         })}
       </div>
 
-      {/* Divider + add new */}
-      <div className="pt-4 border-t border-dashed border-gray-200">
+      {/* Add new assertion */}
+      <div className="pt-4 border-t border-dashed border-gray-200 dark:border-gray-600">
         <div className="flex items-center justify-between mb-3">
-          <div className="text-sm font-semibold text-gray-700">Add / Suggest New Assertion</div>
+          <div className="text-sm font-semibold text-gray-700 dark:text-gray-100">Add / Suggest New Assertion</div>
         </div>
         <AssertionForm
           sentence={sentence}
@@ -248,8 +289,30 @@ export default function SentenceBlock({
             onAddAssertion?.(sentenceIndex, newAssertion);
           }}
           submitLabel="Add Assertion"
+          className="bg-white dark:bg-[#1f2937] rounded-2xl"
         />
       </div>
     </div>
   );
 }
+
+SentenceBlock.propTypes = {
+  sentenceObj: PropTypes.shape({
+    sentence_index: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    sentence: PropTypes.string.isRequired,
+    assertions: PropTypes.arrayOf(PropTypes.object),
+  }).isRequired,
+  onAddAssertion: PropTypes.func,
+  onModifyAssertion: PropTypes.func,
+  onDeleteAssertion: PropTypes.func,
+  reviewState: PropTypes.object,
+  onReviewChange: PropTypes.func,
+};
+
+SentenceBlock.defaultProps = {
+  onAddAssertion: null,
+  onModifyAssertion: null,
+  onDeleteAssertion: null,
+  reviewState: {},
+  onReviewChange: null,
+};

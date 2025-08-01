@@ -1,68 +1,131 @@
 {% extends "base.html" %}
 {% block title %}Review Abstract{% endblock %}
-{% block content %}
-<div class="space-y-6">
-    <!-- Top bar: user / abstract overview / pricing / exit -->
-    <div class="flex flex-wrap justify-between items-start gap-4">
-        <div class="flex flex-col sm:flex-row sm:items-center gap-4">
-            <div class="text-3xl font-extrabold text-slate-900">Abstract Review</div>
-            <div class="flex items-center gap-2">
-                <div class="text-sm px-2 py-1 bg-indigo-100 text-indigo-800 rounded-full font-medium">Manual QC</div>
-                <div class="text-sm text-slate-600">{% if abstract.sentence_count %}{{ abstract.sentence_count }}
-                    sentence{% if abstract.sentence_count > 1 %}s{% endif %}{% endif %}</div>
-            </div>
-        </div>
-        <div class="flex gap-4 items-center flex-wrap">
-            <!-- pricing placeholder -->
-            <div id="pricing-display"
-                class="flex items-center gap-2 bg-white border rounded-full px-4 py-2 shadow-sm text-sm">
-                <div class="font-medium">Estimated reward:</div>
-                <div id="pricing-value" class="text-green-600 font-semibold">Loading...</div>
-                <div id="pricing-error" class="hidden text-rose-600 font-medium">Price unavailable</div>
-            </div>
-            <div class="flex gap-2">
-                <div class="flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-sm text-sm">
-                    {% if session.get('name') %}
-                    <div class="font-medium">{{ session.get('name') }}</div>
-                    {% if session.get('is_admin') %}
-                    <div class="text-[10px] bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">Admin</div>
-                    {% endif %}
-                    {% endif %}
-                </div>
-                <button id="exit-btn"
-                    class="px-4 py-2 bg-rose-100 text-rose-700 rounded-lg font-semibold hover:bg-rose-200 transition">Exit</button>
-            </div>
-        </div>
-    </div>
 
-    <!-- Abstract meta card -->
-    <div class="bg-white rounded-2xl shadow-lg border border-sky-200 p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div class="space-y-2">
-            <h1 class="text-2xl font-bold text-slate-900 leading-tight">{{ abstract.title }}</h1>
-            <div class="flex flex-wrap gap-4 text-sm text-slate-700">
-                <div><span class="font-semibold">PMID:</span> <span class="font-mono">{{ abstract.pmid }}</span></div>
-                <div><span class="font-semibold">Journal:</span> {{ abstract.journal }}</div>
-                <div><span class="font-semibold">Year:</span> {{ abstract.year }}</div>
+{% block content %}
+<main class="space-y-8 max-w-[1200px] mx-auto px-4 pb-12">
+    <!-- Top bar -->
+    <section aria-label="Abstract overview and user controls" class="flex flex-wrap justify-between items-start gap-6">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-4 flex-1 min-w-0">
+            <div class="flex items-center gap-3">
+                <h1 class="text-3xl font-extrabold text-slate-900 leading-tight">Abstract Review</h1>
+                <div
+                    class="hidden sm:inline-flex items-center gap-2 bg-indigo-50 text-indigo-800 px-3 py-1 rounded-full text-sm font-medium">
+                    Manual QC
+                </div>
             </div>
-        </div>
-        <div class="flex flex-col justify-end text-right text-xs text-slate-500">
-            <div>Reviewed by <span class="font-medium">{{ abstract.meta.model or "-" }}</span></div>
-            <div class="mt-1">
-                {% if abstract.meta.timestamp %}
-                {{ abstract.meta.timestamp | to_datetime | datetimeformat }}
-                {% else %}
-                -
+            <div class="flex flex-wrap gap-3 text-sm text-slate-600 mt-1 sm:mt-0">
+                {% if abstract.sentence_count is not none %}
+                <div
+                    class="inline-flex items-center gap-1 bg-white/80 backdrop-blur-sm px-3 py-1 rounded-full shadow-sm">
+                    <div class="font-semibold">{{ abstract.sentence_count }}</div>
+                    <div>sentence{{ 's' if abstract.sentence_count != 1 }}</div>
+                </div>
+                {% endif %}
+                {% if abstract.pmid %}
+                <div class="inline-flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full text-sm">
+                    <div class="font-medium">PMID:</div>
+                    <div class="font-mono truncate max-w-[120px]">{{ abstract.pmid }}</div>
+                </div>
                 {% endif %}
             </div>
         </div>
-    </div>
 
-    <!-- Stats / quick summary -->
-    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="flex gap-6 flex-wrap items-center">
+            <!-- Decision & Pricing -->
+            <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div class="flex items-center gap-2">
+                    <div class="text-xs uppercase text-gray-500">Overall decision</div>
+                    <div aria-label="Overall decision"
+                        class="inline-flex items-center gap-1 px-4 py-2 rounded-full font-semibold text-sm bg-emerald-100 text-emerald-800 ring-1 ring-inset ring-gray-200">
+                        <!-- placeholder, should be replaced by dynamic value -->
+                        ACCEPTED
+                    </div>
+                </div>
+                <div id="pricing-display" class="ml-2">
+                    <div
+                        class="relative flex items-center gap-2 bg-white/90 border rounded-2xl px-4 py-2 shadow-sm text-sm">
+                        <div class="text-[10px] uppercase tracking-wider text-gray-500">Estimated reward</div>
+                        <div class="ml-2 font-semibold text-lg" id="pricing-value">Loading...</div>
+                        <div id="pricing-error" class="ml-2 hidden text-rose-600 font-medium">Price unavailable</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- User / Exit -->
+            <div class="flex items-center gap-4 flex-shrink-0">
+                {% if session.get('name') %}
+                <div class="inline-flex items-center gap-3 bg-white px-4 py-1 rounded-full shadow-sm text-sm">
+                    <div class="flex flex-col">
+                        <div class="font-medium truncate" style="max-width:140px;">{{ session.get('name') }}</div>
+                        {% if session.get('is_admin') %}
+                        <div
+                            class="mt-0.5 text-[10px] uppercase tracking-wide bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">
+                            Admin</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                <button id="exit-btn" aria-label="Exit review"
+                    class="px-4 py-2 bg-rose-50 text-rose-700 rounded-lg font-semibold hover:bg-rose-100 transition-shadow shadow-sm focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-rose-400">
+                    Exit
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Meta card -->
+    <section aria-label="Abstract metadata"
+        class="relative bg-white rounded-3xl shadow-xl border border-sky-100 p-6 grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-6">
+        <div class="flex flex-col gap-3 min-w-0">
+            <h2 class="text-2xl font-extrabold text-slate-900 leading-tight break-words">{{ abstract.title }}</h2>
+            <div class="flex flex-wrap gap-4 text-sm text-slate-700">
+                <div class="inline-flex gap-1 items-center">
+                    <span class="font-semibold">PMID:</span>
+                    <span class="font-mono">{{ abstract.pmid or "—" }}</span>
+                    {% if abstract.pmid %}
+                    <a href="https://pubmed.ncbi.nlm.nih.gov/{{ abstract.pmid }}" target="_blank"
+                        rel="noopener noreferrer"
+                        class="ml-1 text-indigo-600 hover:underline flex items-center gap-1 text-xs"
+                        aria-label="View PMID externally">
+                        <svg aria-hidden="true" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2"
+                            viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M18 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <path d="M15 3h6v6" />
+                            <path d="M10 14L21 3" />
+                        </svg>
+                        <span class="sr-only">Open PMID</span>
+                    </a>
+                    {% endif %}
+                </div>
+                <div><span class="font-semibold">Journal:</span> {{ abstract.journal or "—" }}</div>
+                <div><span class="font-semibold">Year:</span> {{ abstract.year or "—" }}</div>
+            </div>
+        </div>
+        <div class="flex flex-col justify-between gap-2 text-right text-xs text-slate-500">
+            <div>
+                <div class="text-[10px] uppercase font-semibold tracking-wider text-indigo-700">Generated / Reviewed by
+                </div>
+                <div class="mt-1 font-medium">{{ abstract.meta.model or "-" }}</div>
+            </div>
+            <div>
+                <div class="text-[11px] font-medium">Timestamp</div>
+                <div class="mt-0.5">
+                    {% if abstract.meta.timestamp %}
+                    {{ abstract.meta.timestamp | to_datetime | datetimeformat }}
+                    {% else %}
+                    —
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats + Overview -->
+    <section aria-label="Reviewer statistics and overview" class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div
-            class="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-100 rounded-xl p-5 shadow-sm flex flex-col gap-2">
+            class="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-100 rounded-2xl p-6 shadow-sm flex flex-col gap-3">
             <div class="flex justify-between items-center">
-                <div class="font-semibold text-gray-800">Your Stats</div>
+                <div class="text-lg font-semibold text-gray-800">Your Stats</div>
             </div>
             <ul class="space-y-1 text-sm text-slate-700">
                 <li>Total abstracts reviewed: <span class="font-semibold">{{ stats.reviewed_abstracts }}</span></li>
@@ -73,114 +136,134 @@
                 </li>
             </ul>
         </div>
-        <!-- Placeholder for future overall decision summary / quick nav -->
-        <div class="bg-white rounded-xl border shadow-sm p-5 flex flex-col gap-2">
-            <div class="font-semibold text-gray-800 mb-1">Overview</div>
-            <div class="flex flex-wrap gap-3">
-                <div
-                    class="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-medium">
-                    ACCEPTED
-                </div>
-                <div
-                    class="inline-flex items-center gap-1 px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
-                    MODIFIED
-                </div>
-                <div
-                    class="inline-flex items-center gap-1 px-3 py-1 bg-rose-100 text-rose-800 rounded-full text-xs font-medium">
-                    REJECTED
-                </div>
-                <div
-                    class="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-medium">
-                    UNCERTAIN
-                </div>
+        <div class="bg-white rounded-2xl border shadow-sm p-6 flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+                <div class="text-lg font-semibold text-gray-800">Overview</div>
+                <!-- placeholder for quick nav/filters -->
             </div>
-            <div class="text-[11px] text-slate-500 mt-2">
-                Sentence-level decisions & quick navigation will go here.
+            <div class="flex flex-wrap gap-2">
+                <div class="decision-badge accept">ACCEPTED</div>
+                <div class="decision-badge modify">MODIFIED</div>
+                <div class="decision-badge reject">REJECTED</div>
+                <div class="decision-badge uncertain">UNCERTAIN</div>
             </div>
+            <p class="text-[11px] text-slate-500 mt-2">
+                Sentence-level decisions & quick navigation will appear here.
+            </p>
         </div>
-    </div>
+    </section>
 
     <!-- Review form -->
     <form method="post" id="review-form" class="space-y-8" novalidate>
         {% for sent in abstract.sentence_results %}
         {% set sent_idx = loop.index0 %}
-        <div class="relative bg-white rounded-2xl shadow border border-slate-200 p-6 space-y-4">
-            <div class="flex justify-between items-start gap-4">
-                <div class="flex items-start gap-3 flex-1 flex-wrap">
+        <article aria-label="Sentence block {{ loop.index }}"
+            class="relative bg-white rounded-3xl shadow border border-slate-200 p-6 space-y-6">
+            <header class="flex flex-col lg:flex-row justify-between items-start gap-4">
+                <div class="flex gap-4 flex-1 flex-wrap items-start min-w-0">
                     <div class="flex-shrink-0">
                         <div
-                            class="text-sm font-semibold text-indigo-700 uppercase tracking-wider bg-indigo-100 px-2 py-1 rounded-full">
-                            S{{ loop.index }}</div>
+                            class="inline-flex items-center px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs font-semibold uppercase tracking-wide">
+                            S{{ loop.index }}
+                        </div>
                     </div>
-                    <div class="prose prose-sm max-w-none text-slate-800 flex-1 leading-relaxed">
+                    <p class="prose prose-sm max-w-none text-slate-800 flex-1 leading-relaxed break-words">
                         {{ sent.sentence }}
-                    </div>
+                    </p>
                 </div>
-                <!-- placeholder for sentence-level badge -->
-                <div class="flex gap-2 items-center">
-                    <!-- overall sentence decision could be dynamically injected here -->
-                    <div
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    <div class="text-[11px] text-gray-500 mr-1">Sentence decision:</div>
+                    <div aria-label="Sentence decision"
                         class="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold">
                         ACCEPT
                     </div>
                 </div>
-            </div>
+            </header>
 
             <!-- Existing assertions -->
-            <div class="space-y-4">
+            <div class="space-y-5">
                 {% for assertion in sent.assertions %}
                 {% set ass_idx = loop.index0 %}
-                <div class="p-4 bg-gray-50 rounded-lg border border-slate-200 flex flex-col lg:flex-row gap-4">
-                    <div class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="p-5 bg-gray-50 rounded-2xl border border-slate-200 flex flex-col lg:flex-row gap-6">
+                    <div class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <!-- Subject -->
                         <div class="flex flex-col">
-                            <div class="text-[11px] font-semibold text-gray-600">Subject</div>
-                            <div class="flex items-center gap-2 mt-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <div class="text-[12px] font-semibold text-gray-700">Subject</div>
+                                <div class="ml-auto flex gap-2">
+                                    {% if assertion.is_new %}
+                                    <div
+                                        class="inline-flex px-2 py-1 text-[10px] font-semibold bg-yellow-100 text-yellow-800 rounded-full">
+                                        New</div>
+                                    {% endif %}
+                                    {% if assertion.edited_at %}
+                                    <div
+                                        class="inline-flex px-2 py-1 text-[10px] font-semibold bg-orange-100 text-orange-800 rounded-full">
+                                        Edited</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-2">
                                 <div
-                                    class="px-2 py-1 rounded-full text-xs font-medium {% if abstract and assertion.subject and assertion.subject|lower in sent.sentence|lower %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
+                                    class="px-3 py-1 rounded-full text-sm font-medium {% if assertion.subject and assertion.subject|lower in sent.sentence|lower %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
                                     {{ assertion.subject }}
                                 </div>
-                                <div class="text-[10px] italic text-slate-500">({{ assertion.subject_type }})</div>
+                                <div
+                                    class="text-[10px] italic {% if assertion.subject_type in ['type1','type2'] %}text-gray-500{% else %}text-rose-600{% endif %}">
+                                    ({{ assertion.subject_type or "?" }})
+                                </div>
                             </div>
                             {% if not (assertion.subject and assertion.subject|lower in sent.sentence|lower) %}
-                            <div class="text-[10px] text-rose-600 mt-1">Subject not found in sentence</div>
+                            <div class="text-[11px] text-rose-600 mt-1">Subject not found exactly in sentence</div>
                             {% endif %}
                         </div>
+
+                        <!-- Predicate -->
                         <div class="flex flex-col">
-                            <div class="text-[11px] font-semibold text-gray-600">Predicate</div>
-                            <div class="flex items-center gap-2 mt-1">
+                            <div class="text-[12px] font-semibold text-gray-700 mb-1">Predicate</div>
+                            <div class="flex items-center gap-2">
                                 <div
-                                    class="px-2 py-1 rounded-full text-xs font-medium {% if assertion.predicate in ['causes','increases','reduces','decreases','associated_with','inhibits','induces','related_to','no_effect','prevents'] %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
+                                    class="px-3 py-1 rounded-full text-sm font-medium {% if assertion.predicate in ['causes','increases','reduces','decreases','associated_with','inhibits','induces','related_to','no_effect','prevents'] %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
                                     {% if assertion.negation %}neg_{{ assertion.predicate }}{% else %}{{
                                     assertion.predicate }}{% endif %}
                                 </div>
-                                {% if assertion.predicate not in
-                                ['causes','increases','reduces','decreases','associated_with','inhibits','induces','related_to','no_effect','prevents']
-                                %}
-                                <div class="text-[10px] text-rose-600">Predicate not whitelisted</div>
-                                {% endif %}
                             </div>
+                            {% if assertion.predicate not in
+                            ['causes','increases','reduces','decreases','associated_with','inhibits','induces','related_to','no_effect','prevents']
+                            %}
+                            <div class="text-[11px] text-rose-600 mt-1">Predicate not whitelisted</div>
+                            {% endif %}
                         </div>
+
+                        <!-- Object -->
                         <div class="flex flex-col">
-                            <div class="text-[11px] font-semibold text-gray-600">Object</div>
-                            <div class="flex items-center gap-2 mt-1">
+                            <div class="flex items-center gap-2 mb-1">
+                                <div class="text-[12px] font-semibold text-gray-700">Object</div>
+                                <!-- placeholder for type badges etc -->
+                            </div>
+                            <div class="flex items-center gap-2">
                                 <div
-                                    class="px-2 py-1 rounded-full text-xs font-medium {% if abstract and assertion.object and assertion.object|lower in sent.sentence|lower %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
+                                    class="px-3 py-1 rounded-full text-sm font-medium {% if assertion.object and assertion.object|lower in sent.sentence|lower %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
                                     {{ assertion.object }}
                                 </div>
-                                <div class="text-[10px] italic text-slate-500">({{ assertion.object_type }})</div>
+                                <div
+                                    class="text-[10px] italic {% if assertion.object_type in ['type1','type2'] %}text-gray-500{% else %}text-rose-600{% endif %}">
+                                    ({{ assertion.object_type or "?" }})
+                                </div>
                             </div>
                             {% if not (assertion.object and assertion.object|lower in sent.sentence|lower) %}
-                            <div class="text-[10px] text-rose-600 mt-1">Object not found in sentence</div>
+                            <div class="text-[11px] text-rose-600 mt-1">Object not found exactly in sentence</div>
                             {% endif %}
                         </div>
                     </div>
 
-                    <!-- review controls -->
-                    <div class="flex flex-col gap-3 min-w-[200px]">
+                    <!-- Review controls -->
+                    <div class="flex-shrink-0 flex flex-col gap-4 min-w-[240px]">
                         <div class="flex flex-col">
-                            <label class="text-[11px] font-semibold mb-1">Decision</label>
-                            <select name="review_{{sent_idx}}_{{ass_idx}}" required
-                                class="px-3 py-2 rounded border text-sm">
+                            <label for="review_{{sent_idx}}_{{ass_idx}}"
+                                class="text-[11px] font-semibold mb-1">Decision</label>
+                            <select name="review_{{sent_idx}}_{{ass_idx}}" id="review_{{sent_idx}}_{{ass_idx}}" required
+                                class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
                                 <option value="">-</option>
                                 <option value="accept">Accept</option>
                                 <option value="modify">Modify</option>
@@ -189,111 +272,182 @@
                             </select>
                         </div>
                         <div class="flex flex-col">
-                            <label class="text-[11px] font-semibold mb-1">Reviewer note</label>
-                            <input type="text" name="comment_{{sent_idx}}_{{ass_idx}}" placeholder="Optional"
-                                class="px-3 py-2 rounded border text-sm" />
+                            <label for="comment_{{sent_idx}}_{{ass_idx}}"
+                                class="text-[11px] font-semibold mb-1">Reviewer note</label>
+                            <input type="text" name="comment_{{sent_idx}}_{{ass_idx}}"
+                                id="comment_{{sent_idx}}_{{ass_idx}}" placeholder="Optional"
+                                class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                         </div>
                         <div class="flex gap-2 mt-1">
                             <button type="button"
-                                class="flex-1 text-xs px-3 py-1 bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100 transition">Edit</button>
+                                class="flex-1 text-xs px-3 py-1 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition">Edit</button>
                             <button type="button"
-                                class="flex-1 text-xs px-3 py-1 bg-rose-50 text-rose-600 rounded hover:bg-rose-100 transition">Delete</button>
+                                class="flex-1 text-xs px-3 py-1 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-100 transition">Delete</button>
                         </div>
                     </div>
                 </div>
                 {% endfor %}
 
-                <!-- Add new assertion form -->
-                <div class="p-4 bg-white rounded-lg border border-green-200 flex flex-col gap-4">
-                    <div class="flex items-center justify-between">
-                        <div class="text-sm font-semibold text-gray-700">Add / Suggest New Assertion</div>
+                <!-- Add new assertion -->
+                <div class="p-5 bg-white rounded-2xl border border-green-200 flex flex-col gap-5">
+                    <div class="flex justify-between items-center">
+                        <div class="text-sm font-semibold text-gray-800">Add / Suggest New Assertion</div>
                         <div class="text-xs text-slate-500">All fields required except comment</div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
                         <div class="flex flex-col">
-                            <label class="text-[11px] font-semibold mb-1">Subject</label>
-                            <input type="text" name="useradd_subject_{{sent_idx}}" placeholder="Subject"
-                                class="px-3 py-2 border rounded text-sm" />
+                            <label for="useradd_subject_{{sent_idx}}"
+                                class="text-[11px] font-semibold mb-1">Subject</label>
+                            <input type="text" name="useradd_subject_{{sent_idx}}" id="useradd_subject_{{sent_idx}}"
+                                placeholder="Subject"
+                                class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                         </div>
                         <div class="flex flex-col">
-                            <label class="text-[11px] font-semibold mb-1">Predicate</label>
-                            <input type="text" name="useradd_predicate_{{sent_idx}}" placeholder="Predicate"
-                                class="px-3 py-2 border rounded text-sm" />
+                            <label for="useradd_predicate_{{sent_idx}}"
+                                class="text-[11px] font-semibold mb-1">Predicate</label>
+                            <input type="text" name="useradd_predicate_{{sent_idx}}" id="useradd_predicate_{{sent_idx}}"
+                                placeholder="Predicate"
+                                class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                         </div>
                         <div class="flex flex-col">
-                            <label class="text-[11px] font-semibold mb-1">Object</label>
-                            <input type="text" name="useradd_object_{{sent_idx}}" placeholder="Object"
-                                class="px-3 py-2 border rounded text-sm" />
+                            <label for="useradd_object_{{sent_idx}}"
+                                class="text-[11px] font-semibold mb-1">Object</label>
+                            <input type="text" name="useradd_object_{{sent_idx}}" id="useradd_object_{{sent_idx}}"
+                                placeholder="Object"
+                                class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                         </div>
                         <div class="flex flex-col">
-                            <label class="text-[11px] font-semibold mb-1">Negation</label>
-                            <select name="useradd_negation_{{sent_idx}}" class="px-3 py-2 border rounded text-sm">
+                            <label for="useradd_negation_{{sent_idx}}"
+                                class="text-[11px] font-semibold mb-1">Negation</label>
+                            <select name="useradd_negation_{{sent_idx}}" id="useradd_negation_{{sent_idx}}"
+                                class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400">
                                 <option value="false">False</option>
                                 <option value="true">True</option>
                             </select>
                         </div>
                         <div class="flex flex-col md:col-span-2">
-                            <label class="text-[11px] font-semibold mb-1">Comment (optional)</label>
-                            <input type="text" name="useradd_comment_{{sent_idx}}" placeholder="Reviewer note"
-                                class="px-3 py-2 border rounded text-sm" />
+                            <label for="useradd_comment_{{sent_idx}}" class="text-[11px] font-semibold mb-1">Comment
+                                (optional)</label>
+                            <input type="text" name="useradd_comment_{{sent_idx}}" id="useradd_comment_{{sent_idx}}"
+                                placeholder="Reviewer note"
+                                class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400" />
                         </div>
                     </div>
                 </div>
             </div>
             {% endfor %}
 
-            <!-- Submit area sticky on large screens -->
-            <div class="flex flex-col-reverse md:flex-row justify-between items-center gap-4">
-                <div class="text-sm text-slate-600" id="review-status">Ready to submit</div>
-                <div class="flex gap-3">
+            <!-- Submit footer -->
+            <div
+                class="sticky bottom-0 left-0 right-0 bg-white/90 backdrop-blur-md border-t border-gray-200 py-4 flex flex-wrap justify-between items-center gap-4 px-6 rounded-t-2xl shadow-inner">
+                <div class="text-sm text-slate-600" id="review-status" aria-live="polite">Ready to submit</div>
+                <div class="flex gap-4 items-center flex-wrap">
                     <div class="flex flex-col text-right">
-                        <div class="text-[10px] text-slate-500">Overall decision</div>
-                        <div
+                        <div class="text-[10px] text-gray-500 uppercase">Overall decision</div>
+                        <div aria-label="Overall overall decision"
                             class="inline-flex items-center gap-1 px-4 py-2 bg-emerald-100 text-emerald-800 rounded-full font-semibold text-sm">
-                            ACCEPTED
-                        </div>
+                            ACCEPTED</div>
                     </div>
                     <button type="submit" id="submit-btn"
-                        class="relative flex items-center gap-2 px-7 py-3 rounded-full font-semibold text-white bg-gradient-to-r from-green-500 to-teal-400 hover:scale-[1.02] transition shadow-lg">
+                        class="relative flex items-center gap-2 px-7 py-3 rounded-full font-semibold text-white bg-gradient-to-r from-green-500 to-teal-400 hover:scale-[1.02] transition shadow-lg focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-green-300">
                         Submit Review
                     </button>
                 </div>
             </div>
     </form>
-</div>
+</main>
 
+<!-- Toast container -->
+<div id="toast-container" aria-live="polite" class="fixed bottom-6 right-6 flex flex-col gap-2 z-50"></div>
+
+{% endblock %}
+
+{% block scripts %}
 <script>
-    // Exit confirm
-    document.getElementById("exit-btn")?.addEventListener("click", (e) => {
-        e.preventDefault();
-        if (window.confirm("Are you sure you want to exit? Unsubmitted progress will be lost.")) {
-            window.location.href = "{{ url_for('logout') }}";
+    // utility toast
+    function showToast(message, type = "info", duration = 3500) {
+        const colors = {
+            info: ["bg-white", "border", "border-gray-200", "text-gray-800"],
+            warn: ["bg-yellow-50", "border", "border-yellow-300", "text-yellow-900"],
+            error: ["bg-rose-50", "border", "border-rose-300", "text-rose-800"],
+            success: ["bg-emerald-50", "border", "border-emerald-300", "text-emerald-800"],
+        };
+        const toast = document.createElement("div");
+        toast.setAttribute("role", "status");
+        toast.className = [
+            "flex",
+            "items-center",
+            "gap-3",
+            "px-4",
+            "py-2",
+            "rounded-xl",
+            "shadow-md",
+            "max-w-sm",
+            "transition-all",
+            "ring-1",
+            "backdrop-blur-sm",
+            ...colors[type],
+        ].join(" ");
+        toast.textContent = message;
+        document.getElementById("toast-container").appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = "0";
+            toast.style.transform = "translateY(4px)";
+            setTimeout(() => toast.remove(), 300);
+        }, duration);
+    }
+
+    // Confirm exit with unsaved changes
+    const form = document.getElementById("review-form");
+    let isDirty = false;
+    form?.addEventListener("input", () => { isDirty = true; });
+    window.addEventListener("beforeunload", (e) => {
+        if (isDirty) {
+            e.preventDefault();
+            e.returnValue = "";
         }
     });
+    document.getElementById("exit-btn")?.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (isDirty) {
+            if (!confirm("You have unsaved changes. Exit anyway?")) return;
+        }
+        window.location.href = "{{ url_for('logout') }}";
+    });
 
-    // Pricing fetch (simplified demo; replace with real API call)
-    async function loadPricing() {
+    // Pricing fetch with retry/backoff
+    async function loadPricing(retries = 2, delay = 500) {
+        const endpoint = "/api/review/pricing?abstract_id={{ abstract.pmid }}";
         try {
-            const res = await fetch("/api/review/pricing?abstract_id={{ abstract.pmid }}", { credentials: "include" });
-            if (!res.ok) throw new Error("bad");
+            const res = await fetch(endpoint, { credentials: "include" });
+            if (!res.ok) throw new Error("Network error");
             const data = await res.json();
-            document.getElementById("pricing-value").textContent = data?.estimated_reward ? `£${parseFloat(data.estimated_reward).toFixed(2)}` : "—";
-            document.getElementById("pricing-error").classList.add("hidden");
+            const elValue = document.getElementById("pricing-value");
+            if (data?.estimated_reward != null) {
+                elValue.textContent = `£${parseFloat(data.estimated_reward).toFixed(2)}`;
+                document.getElementById("pricing-error").classList.add("hidden");
+            } else {
+                throw new Error("No pricing data");
+            }
         } catch (err) {
-            document.getElementById("pricing-value").classList.add("line-through", "text-gray-400");
+            if (retries > 0) {
+                setTimeout(() => loadPricing(retries - 1, delay * 1.8), delay);
+                return;
+            }
+            const elValue = document.getElementById("pricing-value");
+            elValue.classList.add("line-through", "text-gray-400");
             document.getElementById("pricing-error").classList.remove("hidden");
-            document.getElementById("pricing-value").textContent = "N/A";
+            elValue.textContent = "N/A";
             showToast("Failed to load pricing info", "warn");
         }
     }
     loadPricing();
 
-    // Submit confirmation when overall decision not accept (stub: logic to compute)
+    // Submit guard if overall decision not accepted (stub logic)
     document.getElementById("review-form")?.addEventListener("submit", (e) => {
-        // placeholder: compute derived overall (should come from frontend logic)
-        const overall = "modify"; // stub: replace with real derivation
-        if (overall !== "accept") {
-            if (!window.confirm(`Overall decision is "${overall.toUpperCase()}". Are you sure you want to submit?`)) {
+        const overallDecision = "modify"; // ideally computed / injected
+        if (overallDecision !== "accept") {
+            if (!confirm(`Overall decision is "${overallDecision.toUpperCase()}". Submit anyway?`)) {
                 e.preventDefault();
             }
         }

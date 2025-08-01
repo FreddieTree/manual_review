@@ -1,40 +1,85 @@
-import { useTheme } from "../hooks/useTheme";
-import { useEffect } from "react";
+import { useEffect, useCallback } from "react";
 import clsx from "clsx";
+import PropTypes from "prop-types";
+import { useTheme } from "../hooks/useTheme";
 
-const optionStyles = "px-3 py-1 rounded-full text-xs font-medium cursor-pointer transition";
-
-export default function ThemeSwitcher() {
+/**
+ * ThemeSwitcher: picks between light / dark / system with accessible buttons.
+ * Apple-style minimal, with subtle backdrop blur and clear selection.
+ */
+export default function ThemeSwitcher({ className = "" }) {
     const { mode, resolved, setTheme } = useTheme();
 
     useEffect(() => {
-        // optional: reflect in document attribute for server rendering fallback
+        // expose resolved for CSS fallback / data attribute
         document.documentElement.dataset.theme = resolved;
     }, [resolved]);
 
+    const options = [
+        { key: "light", label: "Light" },
+        { key: "dark", label: "Dark" },
+        { key: "system", label: "Auto" },
+    ];
+
+    const handleKey = useCallback(
+        (e, key) => {
+            if (e.key === " " || e.key === "Enter") {
+                e.preventDefault();
+                setTheme(key);
+            }
+        },
+        [setTheme]
+    );
+
     return (
-        <div className="inline-flex items-center gap-2 bg-surface/80 backdrop-blur-sm rounded-full border border-gray-200 px-2 py-1">
-            <div className="text-xs font-semibold text-gray-600 mr-2">Theme:</div>
-            <div className="flex gap-1">
-                {["light", "dark", "system"].map((o) => (
-                    <div
-                        key={o}
-                        onClick={() => setTheme(o)}
+        <div
+            role="group"
+            aria-label="Theme switcher"
+            className={clsx(
+                "inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/60 dark:bg-gray-800/60 backdrop-blur-md px-3 py-1 shadow-sm",
+                "text-[13px] font-medium",
+                className
+            )}
+        >
+            <div className="sr-only">Theme:</div>
+            {options.map((o) => {
+                const selected = mode === o.key;
+                return (
+                    <button
+                        key={o.key}
+                        type="button"
+                        aria-pressed={selected}
+                        aria-label={`Switch to ${o.label} theme`}
+                        onClick={() => setTheme(o.key)}
+                        onKeyDown={(e) => handleKey(e, o.key)}
                         className={clsx(
-                            optionStyles,
-                            mode === o
-                                ? "bg-primary text-white shadow-btn"
-                                : "bg-muted text-gray-700 hover:bg-gray-100"
+                            "relative flex items-center justify-center rounded-full transition-all text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1",
+                            selected
+                                ? "bg-gradient-to-r from-indigo-600 to-sky-500 text-white shadow"
+                                : "bg-transparent text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700",
+                            "px-3 py-1",
+                            "min-w-[60px]"
                         )}
-                        aria-label={`Switch to ${o}`}
                     >
-                        {o === "system" ? "Auto" : o.charAt(0).toUpperCase() + o.slice(1)}
-                    </div>
-                ))}
-            </div>
-            <div className="ml-3 text-[11px] text-gray-500">
-                Applied: <span className="font-medium">{resolved}</span>
+                        {o.label}
+                        {selected && (
+                            <span className="sr-only"> (selected)</span>
+                        )}
+                    </button>
+                );
+            })}
+            <div className="ml-2 flex items-center gap-1 text-[11px] text-gray-500">
+                <span className="hidden sm:inline">Applied:</span>{" "}
+                <span className="font-semibold capitalize">{resolved}</span>
             </div>
         </div>
     );
 }
+
+ThemeSwitcher.propTypes = {
+    className: PropTypes.string,
+};
+
+ThemeSwitcher.defaultProps = {
+    className: "",
+};
