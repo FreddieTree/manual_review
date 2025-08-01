@@ -100,3 +100,61 @@ def get_log_by_assertion_id(assertion_id):
     except Exception:
         pass
     return None
+
+
+REVIEWERS_JSON = "data/reviewers.json"
+
+def _ensure_reviewers_file():
+    if not os.path.exists(REVIEWERS_JSON):
+        with open(REVIEWERS_JSON, "w", encoding="utf-8") as f:
+            json.dump([], f)
+
+def load_reviewers():
+    _ensure_reviewers_file()
+    with open(REVIEWERS_JSON, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_reviewers(data):
+    with open(REVIEWERS_JSON, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+def get_all_reviewers():
+    """Return all reviewers (list of dicts)"""
+    return load_reviewers()
+
+def add_reviewer(email, name, active=True, role="reviewer", note=""):
+    email = email.lower().strip()
+    allr = load_reviewers()
+    if any(r['email'] == email for r in allr):
+        raise Exception("Reviewer already exists.")
+    allr.append({
+        "email": email,
+        "name": name.strip(),
+        "active": bool(active),
+        "role": role,
+        "note": note
+    })
+    save_reviewers(allr)
+    return True
+
+def update_reviewer(email, fields:dict):
+    email = email.lower().strip()
+    allr = load_reviewers()
+    found = False
+    for r in allr:
+        if r["email"] == email:
+            r.update(fields)
+            found = True
+            break
+    if not found:
+        raise Exception("Reviewer not found.")
+    save_reviewers(allr)
+    return True
+
+def delete_reviewer(email):
+    email = email.lower().strip()
+    allr = load_reviewers()
+    allr = [r for r in allr if r["email"] != email]
+    save_reviewers(allr)
+    return True
+

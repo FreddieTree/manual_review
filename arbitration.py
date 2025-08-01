@@ -3,6 +3,7 @@
 import time
 from config import REVIEW_LOGS_PATH
 from aggregate import find_assertion_conflicts
+import json
 
 def get_arbitration_queue():
     """
