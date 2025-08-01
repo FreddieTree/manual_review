@@ -1,154 +1,229 @@
-import uuid
-import copy
-import time
+# routes/reviewer.py
+from flask import Blueprint, request, session, jsonify
+from functools import wraps
+from typing import Any, Dict, Optional
+import traceback
+import logging
 
-def make_assertion_id(subject, subject_type, predicate, object_, object_type):
-    return f"{subject}|{subject_type}|{predicate}|{object_}|{object_type}"
+from utils import is_valid_email
+from models import (
+    get_all_reviewers,
+    add_reviewer,
+    update_reviewer,
+    delete_reviewer,
+    get_reviewer_by_email,
+    get_stats_for_reviewer,
+    get_abstract_by_id,
+    log_review_action,
+)
+from task_manager import assign_abstract_to_reviewer, release_assignment, who_has_abstract, release_expired_locks
+from aggregate import get_detailed_assertion_summary
 
-def new_assertion(subject, subject_type, predicate, object_, object_type, negation, creator, pmid, sentence_idx, sentence_text, comment=""):
-    return {
-        "assertion_id": str(uuid.uuid4()),
-        "subject": subject,
-        "subject_type": subject_type,
-        "predicate": predicate,
-        "object": object_,
-        "object_type": object_type,
-        "negation": negation,
-        "creator": creator,
-        "pmid": pmid,
-        "sentence_idx": sentence_idx,
-        "sentence_text": sentence_text,
-        "created_at": time.time(),
-        "action": "add",
-        "related_to": None,
-        "comment": comment,
-    }
+reviewer_api = Blueprint("reviewer_api", __name__, url_prefix="/api")
 
-def update_assertion(original, updated_fields, updater, pmid, sentence_idx, sentence_text, comment=""):
-    fields = ["subject", "subject_type", "predicate", "object", "object_type", "negation"]
-    changed = [f for f in fields if original[f] != updated_fields.get(f, original[f])]
-    action_type = "modify" if len(changed) == 1 else "add"
-    updated = copy.deepcopy(original)
-    for k in fields:
-        if k in updated_fields:
-            updated[k] = updated_fields[k]
-    updated["assertion_id"] = str(uuid.uuid4())
-    updated["creator"] = updater
-    updated["pmid"] = pmid
-    updated["sentence_idx"] = sentence_idx
-    updated["sentence_text"] = sentence_text
-    updated["created_at"] = time.time()
-    updated["action"] = action_type
-    updated["related_to"] = original["assertion_id"]
-    updated["comment"] = comment
-    return updated
+logger = logging.getLogger(__name__)
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("[%(asctime)s] %(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(handler)
+logger.setLevel(logging.INFO)
 
-def reject_assertion(original, reviewer, pmid, sentence_idx, sentence_text, reason=""):
-    return {
-        "assertion_id": str(uuid.uuid4()),
-        "action": "reject",
-        "related_to": original["assertion_id"],
-        "reviewer": reviewer,
-        "pmid": pmid,
-        "sentence_idx": sentence_idx,
-        "sentence_text": sentence_text,
-        "created_at": time.time(),
-        "reason": reason
-    }
 
-def uncertain_assertion(original, reviewer, pmid, sentence_idx, sentence_text, comment=""):
-    return {
-        "assertion_id": str(uuid.uuid4()),
-        "action": "uncertain",
-        "related_to": original["assertion_id"],
-        "reviewer": reviewer,
-        "pmid": pmid,
-        "sentence_idx": sentence_idx,
-        "sentence_text": sentence_text,
-        "created_at": time.time(),
-        "comment": comment
-    }
+def standard_response(data: Any = None, success: bool = True, error: Optional[str] = None) -> Dict[str, Any]:
+    resp: Dict[str, Any] = {"success": success}
+    if success:
+        if data is not None:
+            resp["data"] = data
+    else:
+        resp["error"] = error or "Unknown error"
+    return resp
 
-def audit_review_submission(abs_id, sentence_results, post_data, reviewer_info):
-    logs = []
-    # 处理所有原有断言的review
-    for sent_idx, sent in enumerate(sentence_results):
-        for ass_idx, assertion in enumerate(sent.get("assertions", [])):
-            review_key = f"review_{sent_idx}_{ass_idx}"
-            comment_key = f"comment_{sent_idx}_{ass_idx}"
-            subject_key = f"subject_{sent_idx}_{ass_idx}"
-            predicate_key = f"predicate_{sent_idx}_{ass_idx}"
-            object_key = f"object_{sent_idx}_{ass_idx}"
-            negation_key = f"negation_{sent_idx}_{ass_idx}"
-            subject_type_key = f"subject_type_{sent_idx}_{ass_idx}"
-            object_type_key = f"object_type_{sent_idx}_{ass_idx}"
-            user_op = post_data.get(review_key)
-            comment = post_data.get(comment_key, "")
-            changed = (
-                assertion["subject"] != post_data.get(subject_key, assertion["subject"]) or
-                assertion["predicate"] != post_data.get(predicate_key, assertion["predicate"]) or
-                assertion["object"] != post_data.get(object_key, assertion["object"]) or
-                str(assertion["negation"]).lower() != str(post_data.get(negation_key, assertion["negation"])).lower()
+
+def require_login(f):
+    @wraps(f)
+    def inner(*args, **kwargs):
+        if not session.get("email"):
+            return jsonify(standard_response(success=False, error="Unauthorized")), 401
+        return f(*args, **kwargs)
+    return inner
+
+
+def require_admin(f):
+    @wraps(f)
+    def inner(*args, **kwargs):
+        if not session.get("is_admin"):
+            return jsonify(standard_response(success=False, error="Not authorized")), 403
+        return f(*args, **kwargs)
+    return inner
+
+
+def handle_exception(e):
+    logger.exception("Unhandled exception: %s", e)
+    msg = getattr(e, "args", [None])[0] or str(e)
+    return jsonify(standard_response(success=False, error=msg)), 500
+
+
+# ---- Reviewer management ----
+
+@reviewer_api.route("/reviewers", methods=["GET"])
+@require_admin
+def api_get_all_reviewers():
+    try:
+        reviewers = get_all_reviewers()
+        return jsonify(standard_response(data=reviewers))
+    except Exception as e:
+        return handle_exception(e)
+
+
+@reviewer_api.route("/reviewers", methods=["POST"])
+@require_admin
+def api_add_reviewer():
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        email = (payload.get("email", "") or "").lower().strip()
+        name = (payload.get("name", "") or "").strip()
+        if not name or not is_valid_email(email):
+            return jsonify(standard_response(success=False, error="Invalid name or email")), 400
+        add_reviewer(email=email, name=name)
+        return jsonify(standard_response(data={"email": email}))
+    except Exception as e:
+        return handle_exception(e)
+
+
+@reviewer_api.route("/reviewers/<path:email>", methods=["PUT"])
+@require_admin
+def api_update_reviewer(email):
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        name = (payload.get("name", "") or "").strip()
+        if not name:
+            return jsonify(standard_response(success=False, error="Name required")), 400
+        update_fields: Dict[str, Any] = {"name": name}
+        if "active" in payload:
+            update_fields["active"] = bool(payload.get("active"))
+        if "role" in payload:
+            update_fields["role"] = payload.get("role")
+        if "note" in payload:
+            update_fields["note"] = payload.get("note")
+        update_reviewer(email=email.lower(), fields=update_fields)
+        return jsonify(standard_response(data={"email": email.lower()}))
+    except Exception as e:
+        return handle_exception(e)
+
+
+@reviewer_api.route("/reviewers/<path:email>", methods=["DELETE"])
+@require_admin
+def api_delete_reviewer(email):
+    try:
+        delete_reviewer(email=email.lower())
+        return jsonify(standard_response(data={"email": email.lower()}))
+    except Exception as e:
+        return handle_exception(e)
+
+
+@reviewer_api.route("/whoami", methods=["GET"])
+@require_login
+def api_whoami():
+    try:
+        email = session.get("email")
+        user = get_reviewer_by_email(email)
+        if not user:
+            user = {"email": email, "name": session.get("name", ""), "active": True}
+        return jsonify(standard_response(data=user))
+    except Exception as e:
+        return handle_exception(e)
+
+
+# ---- Assignment & abstract retrieval ----
+
+@reviewer_api.route("/assigned_abstract", methods=["GET"])
+@require_login
+def api_get_assigned_abstract():
+    try:
+        email = session.get("email")
+        name = session.get("name", "")
+        pmid = assign_abstract_to_reviewer(email=email, name=name)
+        if not pmid:
+            return jsonify(standard_response(success=False, error="No available abstracts")), 404
+        abstract = get_abstract_by_id(pmid)
+        if not abstract:
+            return jsonify(standard_response(success=False, error="Assigned abstract missing")), 404
+        release_expired_locks()
+        holders = who_has_abstract(pmid)
+        return jsonify(
+            standard_response(
+                data={
+                    "abstract": abstract,
+                    "lock_holders": [{"email": h[0], "last_seen": h[1]} for h in holders],
+                }
             )
-            updated_fields = {
-                "subject": post_data.get(subject_key, assertion["subject"]),
-                "subject_type": post_data.get(subject_type_key, assertion["subject_type"]),
-                "predicate": post_data.get(predicate_key, assertion["predicate"]),
-                "object": post_data.get(object_key, assertion["object"]),
-                "object_type": post_data.get(object_type_key, assertion["object_type"]),
-                "negation": post_data.get(negation_key, str(assertion["negation"])).lower() == "true",
-            }
-            if user_op == "accept" and not changed:
-                continue  # 纯接受
-            elif user_op == "modify" or (user_op == "accept" and changed):
-                logs.append(update_assertion(
-                    original=assertion,
-                    updated_fields=updated_fields,
-                    updater=reviewer_info["email"],
-                    pmid=abs_id,
-                    sentence_idx=sent_idx,
-                    sentence_text=sent.get("sentence", ""),
-                    comment=comment,
-                ))
-            elif user_op == "uncertain":
-                logs.append(uncertain_assertion(
-                    original=assertion,
-                    reviewer=reviewer_info["email"],
-                    pmid=abs_id,
-                    sentence_idx=sent_idx,
-                    sentence_text=sent.get("sentence", ""),
-                    comment=comment,
-                ))
-            elif user_op == "reject":
-                logs.append(reject_assertion(
-                    original=assertion,
-                    reviewer=reviewer_info["email"],
-                    pmid=abs_id,
-                    sentence_idx=sent_idx,
-                    sentence_text=sent.get("sentence", ""),
-                    reason=comment,
-                ))
-    # 检查新增断言 useradd_ 开头字段
-    for sent_idx, sent in enumerate(sentence_results):
-        subj = post_data.get(f"useradd_subject_{sent_idx}", "").strip()
-        pred = post_data.get(f"useradd_predicate_{sent_idx}", "").strip()
-        obj = post_data.get(f"useradd_object_{sent_idx}", "").strip()
-        subj_type = ""  # 可扩展类型选项
-        obj_type = ""
-        neg = post_data.get(f"useradd_negation_{sent_idx}", "false").lower() == "true"
-        comment = post_data.get(f"useradd_comment_{sent_idx}", "")
-        if subj and pred and obj:
-            logs.append(new_assertion(
-                subject=subj,
-                subject_type=subj_type,
-                predicate=pred,
-                object_=obj,
-                object_type=obj_type,
-                negation=neg,
-                creator=reviewer_info["email"],
-                pmid=abs_id,
-                sentence_idx=sent_idx,
-                sentence_text=sent.get("sentence", ""),
-                comment=comment,
-            ))
-    return logs
+        )
+    except Exception as e:
+        return handle_exception(e)
+
+
+@reviewer_api.route("/release_assignment", methods=["POST"])
+@require_login
+def api_release_assignment():
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        pmid = payload.get("pmid")
+        if not pmid:
+            return jsonify(standard_response(success=False, error="pmid required")), 400
+        email = session.get("email")
+        ok = release_assignment(email=email, pmid=pmid)
+        return jsonify(standard_response(data={"released": ok}))
+    except Exception as e:
+        return handle_exception(e)
+
+
+# ---- Pricing ----
+
+@reviewer_api.route("/review/pricing", methods=["GET"])
+@require_login
+def api_pricing():
+    try:
+        abstract_id = (
+            request.args.get("abstract")
+            or request.args.get("abstractId")
+            or request.args.get("abstract_id")
+        )
+        if not abstract_id:
+            return jsonify(standard_response(success=False, error="abstract query parameter required")), 400
+        abstract_obj = get_abstract_by_id(abstract_id)
+        if not abstract_obj:
+            return jsonify(standard_response(success=False, error="Abstract not found")), 404
+
+        from config import REWARD_PER_ABSTRACT, REWARD_PER_ASSERTION_ADD
+
+        sentence_count = abstract_obj.get("sentence_count") or len(abstract_obj.get("sentence_results", []))
+        per_abstract = float(REWARD_PER_ABSTRACT)
+        per_assertion_add = float(REWARD_PER_ASSERTION_ADD)
+        estimated_for_this = round(per_abstract + sentence_count * 0.01, 3)
+        total_base = round(per_abstract, 3)
+
+        return jsonify(
+            standard_response(
+                data={
+                    "per_abstract": per_abstract,
+                    "per_assertion_add": per_assertion_add,
+                    "sentence_count": sentence_count,
+                    "total_base": total_base,
+                    "estimated_for_this": estimated_for_this,
+                    "currency": "£",
+                }
+            )
+        )
+    except Exception as e:
+        return handle_exception(e)
+
+
+@reviewer_api.route("/reviewer_stats", methods=["GET"])
+@require_login
+def api_reviewer_stats():
+    try:
+        email = session.get("email")
+        stats = get_stats_for_reviewer(email)
+        return jsonify(standard_response(data=stats))
+    except Exception as e:
+        return handle_exception(e)

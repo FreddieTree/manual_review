@@ -1,113 +1,302 @@
 {% extends "base.html" %}
 {% block title %}Review Abstract{% endblock %}
 {% block content %}
-<div class="max-w-3xl mx-auto bg-white rounded-2xl shadow-2xl border border-blue-100 p-8 mt-4">
-    <h2 class="text-2xl font-bold text-blue-900 mb-5 flex items-center gap-2">
-        <span>Abstract Review</span>
-        <span class="ml-2 px-2 py-1 rounded bg-blue-50 text-blue-800 text-xs">Manual QC</span>
-    </h2>
-    <div class="mb-4 p-4 rounded-lg bg-blue-50 border-l-4 border-blue-400 text-gray-800 shadow-sm">
-        <div class="font-semibold">PMID: <span class="font-mono">{{ abstract.pmid }}</span></div>
-        <div><b>Title:</b> {{ abstract.title or '' }}</div>
-        <div class="text-gray-600"><b>Journal:</b> {{ abstract.journal or '' }} ({{ abstract.year or '' }})</div>
+<div class="space-y-6">
+    <!-- Top bar: user / abstract overview / pricing / exit -->
+    <div class="flex flex-wrap justify-between items-start gap-4">
+        <div class="flex flex-col sm:flex-row sm:items-center gap-4">
+            <div class="text-3xl font-extrabold text-slate-900">Abstract Review</div>
+            <div class="flex items-center gap-2">
+                <div class="text-sm px-2 py-1 bg-indigo-100 text-indigo-800 rounded-full font-medium">Manual QC</div>
+                <div class="text-sm text-slate-600">{% if abstract.sentence_count %}{{ abstract.sentence_count }}
+                    sentence{% if abstract.sentence_count > 1 %}s{% endif %}{% endif %}</div>
+            </div>
+        </div>
+        <div class="flex gap-4 items-center flex-wrap">
+            <!-- pricing placeholder -->
+            <div id="pricing-display"
+                class="flex items-center gap-2 bg-white border rounded-full px-4 py-2 shadow-sm text-sm">
+                <div class="font-medium">Estimated reward:</div>
+                <div id="pricing-value" class="text-green-600 font-semibold">Loading...</div>
+                <div id="pricing-error" class="hidden text-rose-600 font-medium">Price unavailable</div>
+            </div>
+            <div class="flex gap-2">
+                <div class="flex items-center gap-2 bg-white px-3 py-1 rounded-full shadow-sm text-sm">
+                    {% if session.get('name') %}
+                    <div class="font-medium">{{ session.get('name') }}</div>
+                    {% if session.get('is_admin') %}
+                    <div class="text-[10px] bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full">Admin</div>
+                    {% endif %}
+                    {% endif %}
+                </div>
+                <button id="exit-btn"
+                    class="px-4 py-2 bg-rose-100 text-rose-700 rounded-lg font-semibold hover:bg-rose-200 transition">Exit</button>
+            </div>
+        </div>
     </div>
-    <div class="mb-6 p-4 bg-gray-100 rounded-lg border flex flex-col gap-2">
-        <div class="font-bold text-gray-700">Your Stats</div>
-        <ul class="list-disc ml-7 text-gray-600">
-            <li>Total abstracts reviewed: <b>{{ stats.reviewed_abstracts }}</b></li>
-            <li>Assertions added: <b>{{ stats.assertions_added }}</b></li>
-            <li><span class="font-semibold text-blue-800">Estimated commission: £{{ stats.commission }}</span></li>
-        </ul>
+
+    <!-- Abstract meta card -->
+    <div class="bg-white rounded-2xl shadow-lg border border-sky-200 p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div class="space-y-2">
+            <h1 class="text-2xl font-bold text-slate-900 leading-tight">{{ abstract.title }}</h1>
+            <div class="flex flex-wrap gap-4 text-sm text-slate-700">
+                <div><span class="font-semibold">PMID:</span> <span class="font-mono">{{ abstract.pmid }}</span></div>
+                <div><span class="font-semibold">Journal:</span> {{ abstract.journal }}</div>
+                <div><span class="font-semibold">Year:</span> {{ abstract.year }}</div>
+            </div>
+        </div>
+        <div class="flex flex-col justify-end text-right text-xs text-slate-500">
+            <div>Reviewed by <span class="font-medium">{{ abstract.meta.model or "-" }}</span></div>
+            <div class="mt-1">
+                {% if abstract.meta.timestamp %}
+                {{ abstract.meta.timestamp | to_datetime | datetimeformat }}
+                {% else %}
+                -
+                {% endif %}
+            </div>
+        </div>
     </div>
-    <form method="post" id="review-form" class="space-y-7">
+
+    <!-- Stats / quick summary -->
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div
+            class="bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-100 rounded-xl p-5 shadow-sm flex flex-col gap-2">
+            <div class="flex justify-between items-center">
+                <div class="font-semibold text-gray-800">Your Stats</div>
+            </div>
+            <ul class="space-y-1 text-sm text-slate-700">
+                <li>Total abstracts reviewed: <span class="font-semibold">{{ stats.reviewed_abstracts }}</span></li>
+                <li>Assertions added: <span class="font-semibold">{{ stats.assertions_added }}</span></li>
+                <li class="flex items-center gap-1">
+                    <span class="font-semibold text-green-700">Estimated commission:</span>
+                    <span class="font-semibold">£{{ stats.commission }}</span>
+                </li>
+            </ul>
+        </div>
+        <!-- Placeholder for future overall decision summary / quick nav -->
+        <div class="bg-white rounded-xl border shadow-sm p-5 flex flex-col gap-2">
+            <div class="font-semibold text-gray-800 mb-1">Overview</div>
+            <div class="flex flex-wrap gap-3">
+                <div
+                    class="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-medium">
+                    ACCEPTED
+                </div>
+                <div
+                    class="inline-flex items-center gap-1 px-3 py-1 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
+                    MODIFIED
+                </div>
+                <div
+                    class="inline-flex items-center gap-1 px-3 py-1 bg-rose-100 text-rose-800 rounded-full text-xs font-medium">
+                    REJECTED
+                </div>
+                <div
+                    class="inline-flex items-center gap-1 px-3 py-1 bg-slate-100 text-slate-700 rounded-full text-xs font-medium">
+                    UNCERTAIN
+                </div>
+            </div>
+            <div class="text-[11px] text-slate-500 mt-2">
+                Sentence-level decisions & quick navigation will go here.
+            </div>
+        </div>
+    </div>
+
+    <!-- Review form -->
+    <form method="post" id="review-form" class="space-y-8" novalidate>
         {% for sent in abstract.sentence_results %}
         {% set sent_idx = loop.index0 %}
-        <div class="mb-6 p-3 border rounded-xl bg-gray-50 shadow-sm">
-            <div class="font-semibold mb-2">
-                <span class="bg-blue-100 px-2 py-1 rounded text-blue-700 text-xs mr-2">Sentence {{ loop.index }}</span>
-                <span class="text-gray-800">{{ sent.sentence }}</span>
+        <div class="relative bg-white rounded-2xl shadow border border-slate-200 p-6 space-y-4">
+            <div class="flex justify-between items-start gap-4">
+                <div class="flex items-start gap-3 flex-1 flex-wrap">
+                    <div class="flex-shrink-0">
+                        <div
+                            class="text-sm font-semibold text-indigo-700 uppercase tracking-wider bg-indigo-100 px-2 py-1 rounded-full">
+                            S{{ loop.index }}</div>
+                    </div>
+                    <div class="prose prose-sm max-w-none text-slate-800 flex-1 leading-relaxed">
+                        {{ sent.sentence }}
+                    </div>
+                </div>
+                <!-- placeholder for sentence-level badge -->
+                <div class="flex gap-2 items-center">
+                    <!-- overall sentence decision could be dynamically injected here -->
+                    <div
+                        class="inline-flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-xs font-semibold">
+                        ACCEPT
+                    </div>
+                </div>
             </div>
-            <table class="w-full mb-2 text-sm border rounded shadow">
-                <thead>
-                    <tr class="bg-gray-200 text-gray-700">
-                        <th>Subject</th>
-                        <th>Predicate</th>
-                        <th>Object</th>
-                        <th>Negation</th>
-                        <th>Review</th>
-                        <th>Comment</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for assertion in sent.assertions %}
-                    {% set ass_idx = loop.index0 %}
-                    <tr class="border-t">
-                        <td>
-                            <input type="text" name="subject_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.subject }}"
-                                class="border rounded px-1 py-0.5 w-24" />
-                            <input type="hidden" name="subject_type_{{sent_idx}}_{{ass_idx}}"
-                                value="{{ assertion.subject_type }}">
-                        </td>
-                        <td>
-                            <input type="text" name="predicate_{{sent_idx}}_{{ass_idx}}"
-                                value="{{ assertion.predicate }}" class="border rounded px-1 py-0.5 w-24" />
-                        </td>
-                        <td>
-                            <input type="text" name="object_{{sent_idx}}_{{ass_idx}}" value="{{ assertion.object }}"
-                                class="border rounded px-1 py-0.5 w-24" />
-                            <input type="hidden" name="object_type_{{sent_idx}}_{{ass_idx}}"
-                                value="{{ assertion.object_type }}">
-                        </td>
-                        <td>
-                            <select name="negation_{{sent_idx}}_{{ass_idx}}" class="border rounded px-1 py-0.5">
-                                <option value="false" {% if not assertion.negation %}selected{% endif %}>False</option>
-                                <option value="true" {% if assertion.negation %}selected{% endif %}>True</option>
-                            </select>
-                        </td>
-                        <td>
-                            <select name="review_{{sent_idx}}_{{ass_idx}}" required class="border rounded px-1 py-0.5">
+
+            <!-- Existing assertions -->
+            <div class="space-y-4">
+                {% for assertion in sent.assertions %}
+                {% set ass_idx = loop.index0 %}
+                <div class="p-4 bg-gray-50 rounded-lg border border-slate-200 flex flex-col lg:flex-row gap-4">
+                    <div class="flex-1 grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div class="flex flex-col">
+                            <div class="text-[11px] font-semibold text-gray-600">Subject</div>
+                            <div class="flex items-center gap-2 mt-1">
+                                <div
+                                    class="px-2 py-1 rounded-full text-xs font-medium {% if abstract and assertion.subject and assertion.subject|lower in sent.sentence|lower %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
+                                    {{ assertion.subject }}
+                                </div>
+                                <div class="text-[10px] italic text-slate-500">({{ assertion.subject_type }})</div>
+                            </div>
+                            {% if not (assertion.subject and assertion.subject|lower in sent.sentence|lower) %}
+                            <div class="text-[10px] text-rose-600 mt-1">Subject not found in sentence</div>
+                            {% endif %}
+                        </div>
+                        <div class="flex flex-col">
+                            <div class="text-[11px] font-semibold text-gray-600">Predicate</div>
+                            <div class="flex items-center gap-2 mt-1">
+                                <div
+                                    class="px-2 py-1 rounded-full text-xs font-medium {% if assertion.predicate in ['causes','increases','reduces','decreases','associated_with','inhibits','induces','related_to','no_effect','prevents'] %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
+                                    {% if assertion.negation %}neg_{{ assertion.predicate }}{% else %}{{
+                                    assertion.predicate }}{% endif %}
+                                </div>
+                                {% if assertion.predicate not in
+                                ['causes','increases','reduces','decreases','associated_with','inhibits','induces','related_to','no_effect','prevents']
+                                %}
+                                <div class="text-[10px] text-rose-600">Predicate not whitelisted</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="flex flex-col">
+                            <div class="text-[11px] font-semibold text-gray-600">Object</div>
+                            <div class="flex items-center gap-2 mt-1">
+                                <div
+                                    class="px-2 py-1 rounded-full text-xs font-medium {% if abstract and assertion.object and assertion.object|lower in sent.sentence|lower %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">
+                                    {{ assertion.object }}
+                                </div>
+                                <div class="text-[10px] italic text-slate-500">({{ assertion.object_type }})</div>
+                            </div>
+                            {% if not (assertion.object and assertion.object|lower in sent.sentence|lower) %}
+                            <div class="text-[10px] text-rose-600 mt-1">Object not found in sentence</div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- review controls -->
+                    <div class="flex flex-col gap-3 min-w-[200px]">
+                        <div class="flex flex-col">
+                            <label class="text-[11px] font-semibold mb-1">Decision</label>
+                            <select name="review_{{sent_idx}}_{{ass_idx}}" required
+                                class="px-3 py-2 rounded border text-sm">
                                 <option value="">-</option>
                                 <option value="accept">Accept</option>
-                                <option value="uncertain">Uncertain</option>
-                                <option value="reject">Reject</option>
                                 <option value="modify">Modify</option>
+                                <option value="reject">Reject</option>
+                                <option value="uncertain">Uncertain</option>
                             </select>
-                        </td>
-                        <td>
-                            <input type="text" name="comment_{{sent_idx}}_{{ass_idx}}"
-                                class="border rounded px-1 py-0.5" placeholder="(Optional)">
-                        </td>
-                    </tr>
-                    <input type="hidden" name="assertion_id_{{sent_idx}}_{{ass_idx}}"
-                        value="{{ assertion.assertion_id }}">
-                    {% endfor %}
-                    <!-- 新增断言行 -->
-                    <tr class="bg-green-50">
-                        <td><input type="text" name="useradd_subject_{{sent_idx}}"
-                                class="border rounded px-1 py-0.5 w-24" placeholder="Add Subject"></td>
-                        <td><input type="text" name="useradd_predicate_{{sent_idx}}"
-                                class="border rounded px-1 py-0.5 w-24" placeholder="Add Predicate"></td>
-                        <td><input type="text" name="useradd_object_{{sent_idx}}"
-                                class="border rounded px-1 py-0.5 w-24" placeholder="Add Object"></td>
-                        <td>
-                            <select name="useradd_negation_{{sent_idx}}" class="border rounded px-1 py-0.5">
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="text-[11px] font-semibold mb-1">Reviewer note</label>
+                            <input type="text" name="comment_{{sent_idx}}_{{ass_idx}}" placeholder="Optional"
+                                class="px-3 py-2 rounded border text-sm" />
+                        </div>
+                        <div class="flex gap-2 mt-1">
+                            <button type="button"
+                                class="flex-1 text-xs px-3 py-1 bg-indigo-50 text-indigo-700 rounded hover:bg-indigo-100 transition">Edit</button>
+                            <button type="button"
+                                class="flex-1 text-xs px-3 py-1 bg-rose-50 text-rose-600 rounded hover:bg-rose-100 transition">Delete</button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+
+                <!-- Add new assertion form -->
+                <div class="p-4 bg-white rounded-lg border border-green-200 flex flex-col gap-4">
+                    <div class="flex items-center justify-between">
+                        <div class="text-sm font-semibold text-gray-700">Add / Suggest New Assertion</div>
+                        <div class="text-xs text-slate-500">All fields required except comment</div>
+                    </div>
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div class="flex flex-col">
+                            <label class="text-[11px] font-semibold mb-1">Subject</label>
+                            <input type="text" name="useradd_subject_{{sent_idx}}" placeholder="Subject"
+                                class="px-3 py-2 border rounded text-sm" />
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="text-[11px] font-semibold mb-1">Predicate</label>
+                            <input type="text" name="useradd_predicate_{{sent_idx}}" placeholder="Predicate"
+                                class="px-3 py-2 border rounded text-sm" />
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="text-[11px] font-semibold mb-1">Object</label>
+                            <input type="text" name="useradd_object_{{sent_idx}}" placeholder="Object"
+                                class="px-3 py-2 border rounded text-sm" />
+                        </div>
+                        <div class="flex flex-col">
+                            <label class="text-[11px] font-semibold mb-1">Negation</label>
+                            <select name="useradd_negation_{{sent_idx}}" class="px-3 py-2 border rounded text-sm">
                                 <option value="false">False</option>
                                 <option value="true">True</option>
                             </select>
-                        </td>
-                        <td colspan="2">
-                            <input type="text" name="useradd_comment_{{sent_idx}}"
-                                class="border rounded px-1 py-0.5 w-32" placeholder="Comment (opt)">
-                        </td>
-                    </tr>
-                </tbody>
-            </table>
-        </div>
-        {% endfor %}
-        <button type="submit"
-            class="px-6 py-2 bg-blue-700 text-white rounded-xl font-semibold hover:bg-blue-800 shadow transition">
-            Submit Review
-        </button>
+                        </div>
+                        <div class="flex flex-col md:col-span-2">
+                            <label class="text-[11px] font-semibold mb-1">Comment (optional)</label>
+                            <input type="text" name="useradd_comment_{{sent_idx}}" placeholder="Reviewer note"
+                                class="px-3 py-2 border rounded text-sm" />
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+
+            <!-- Submit area sticky on large screens -->
+            <div class="flex flex-col-reverse md:flex-row justify-between items-center gap-4">
+                <div class="text-sm text-slate-600" id="review-status">Ready to submit</div>
+                <div class="flex gap-3">
+                    <div class="flex flex-col text-right">
+                        <div class="text-[10px] text-slate-500">Overall decision</div>
+                        <div
+                            class="inline-flex items-center gap-1 px-4 py-2 bg-emerald-100 text-emerald-800 rounded-full font-semibold text-sm">
+                            ACCEPTED
+                        </div>
+                    </div>
+                    <button type="submit" id="submit-btn"
+                        class="relative flex items-center gap-2 px-7 py-3 rounded-full font-semibold text-white bg-gradient-to-r from-green-500 to-teal-400 hover:scale-[1.02] transition shadow-lg">
+                        Submit Review
+                    </button>
+                </div>
+            </div>
     </form>
 </div>
+
+<script>
+    // Exit confirm
+    document.getElementById("exit-btn")?.addEventListener("click", (e) => {
+        e.preventDefault();
+        if (window.confirm("Are you sure you want to exit? Unsubmitted progress will be lost.")) {
+            window.location.href = "{{ url_for('logout') }}";
+        }
+    });
+
+    // Pricing fetch (simplified demo; replace with real API call)
+    async function loadPricing() {
+        try {
+            const res = await fetch("/api/review/pricing?abstract_id={{ abstract.pmid }}", { credentials: "include" });
+            if (!res.ok) throw new Error("bad");
+            const data = await res.json();
+            document.getElementById("pricing-value").textContent = data?.estimated_reward ? `£${parseFloat(data.estimated_reward).toFixed(2)}` : "—";
+            document.getElementById("pricing-error").classList.add("hidden");
+        } catch (err) {
+            document.getElementById("pricing-value").classList.add("line-through", "text-gray-400");
+            document.getElementById("pricing-error").classList.remove("hidden");
+            document.getElementById("pricing-value").textContent = "N/A";
+            showToast("Failed to load pricing info", "warn");
+        }
+    }
+    loadPricing();
+
+    // Submit confirmation when overall decision not accept (stub: logic to compute)
+    document.getElementById("review-form")?.addEventListener("submit", (e) => {
+        // placeholder: compute derived overall (should come from frontend logic)
+        const overall = "modify"; // stub: replace with real derivation
+        if (overall !== "accept") {
+            if (!window.confirm(`Overall decision is "${overall.toUpperCase()}". Are you sure you want to submit?`)) {
+                e.preventDefault();
+            }
+        }
+    });
+</script>
 {% endblock %}

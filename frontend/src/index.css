@@ -2,7 +2,129 @@
 @tailwind components;
 @tailwind utilities;
 
+/* design tokens fallback (可被 generate-css-variables.js 生成的文件覆盖) */
+:root {
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+  --bg: #f8fafc;
+  --surface: #ffffff;
+  --text: #1e2a44;
+  --muted: #f1f5fa;
+  --radius: 1rem;
+  --shadow-default: 0 16px 48px -8px rgba(43,93,215,0.15);
+  --border: #d9e2ef;
+  --transition: 0.2s cubic-bezier(.4,.2,.2,1);
+}
+
+/* dark theme overrides (if using data-theme="dark" or .dark) */
+[data-theme="dark"], .dark {
+  --bg: #0f172a;
+  --surface: #1f2a44;
+  --text: #e2e8ff;
+  --muted: #1f2a44;
+  --border: #2a3658;
+}
+
+/* apply base */
 body {
-  font-family: 'Inter', 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  background-color: #f8fafc;
+  font-family: var(--font-sans);
+  background-color: var(--bg);
+  color: var(--text);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  scroll-behavior: smooth;
+}
+
+/* Utility text enhancements */
+h1, h2, h3, h4 {
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--text);
+}
+p {
+  margin: 0;
+}
+
+/* Links */
+a {
+  color: #2563eb;
+  text-decoration: none;
+  transition: color var(--transition);
+}
+a:hover {
+  color: #0f172a;
+  text-decoration: underline;
+}
+
+/* Accessible focus */
+:focus-visible {
+  outline: 2px solid rgba(43,93,215,0.8);
+  outline-offset: 2px;
+}
+
+/* Scrollbar (light+dark aware) */
+::-webkit-scrollbar {
+  width: 10px;
+  background: var(--muted);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100,116,139,0.5);
+  border-radius: 6px;
+  border: 2px solid var(--muted);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100,116,139,0.7);
+}
+
+/* Forms: baseline reset to blend with design */
+input, select, textarea, button {
+  font-family: inherit;
+  transition: all var(--transition);
+}
+
+/* Background utilities fallback */
+.bg-surface {
+  background-color: var(--surface);
+}
+.bg-muted {
+  background-color: var(--muted);
+}
+
+/* Shadows */
+.shadow-card {
+  box-shadow: var(--shadow-default);
+}
+
+/* Rounded */
+.rounded-token {
+  border-radius: var(--radius);
+}
+
+/* Disabled state */
+[disabled], .disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Text truncation helper */
+.truncate-multiline {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;  
+  overflow: hidden;
+}
+
+/* Utility for smooth elevation change */
+.transition-elevate {
+  transition: box-shadow var(--transition), transform var(--transition);
+}
+
+/* Dark/light mode prefixed variants (for non-JS) */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #0f172a;
+    --surface: #1f2a44;
+    --text: #e2e8ff;
+    --muted: #1f5a44;
+    --border: #2a3658;
+  }
 }
