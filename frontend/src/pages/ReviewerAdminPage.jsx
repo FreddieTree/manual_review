@@ -1,6 +1,7 @@
 // src/pages/ReviewerAdminPage.jsx
-import { useEffect, useState, useCallback, useMemo } from "react";
-import { debounce } from "lodash"; // assume lodash is available; otherwise implement simple debounce
+import React from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
+import { debounce } from "lodash";
 import {
     getReviewers as fetchReviewers,
     addReviewer,
@@ -12,6 +13,7 @@ import { Select } from "../components/ui/Select";
 import { Button } from "../components/ui/Button";
 import Loader from "../components/ui/Loader";
 import { Badge } from "../components/ui/Badge";
+import ConfirmModal from "../components/ConfirmModal";
 
 const DEFAULT_PAGE_SIZE = 25;
 
@@ -22,6 +24,8 @@ const emptyForm = {
     role: "reviewer",
     note: "",
 };
+
+const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test((e || "").trim());
 
 export default function ReviewerAdminPage() {
     // list state and controls
@@ -34,58 +38,24 @@ export default function ReviewerAdminPage() {
     const [total, setTotal] = useState(0);
     const [refreshFlag, setRefreshFlag] = useState(0);
 
+    // sort
+    const [sortKey, setSortKey] = useState("email"); // email | name | role | active
+    const [sortDir, setSortDir] = useState("asc");   // asc | desc
+
     // form/editing
     const [form, setForm] = useState(emptyForm);
     const [editingEmail, setEditingEmail] = useState(null);
     const [submitting, setSubmitting] = useState(false);
     const [feedback, setFeedback] = useState(null); // { type: 'error'|'success', message }
 
-    // Derived filtered/paginated list (if backend doesn't support pagination/search)
-    const filtered = useMemo(() => {
-        if (!search.trim()) return reviewers;
-        const q = search.trim().toLowerCase();
-        return reviewers.filter(
-            (r) =>
-                (r.name || "").toLowerCase().includes(q) ||
-                (r.email || "").toLowerCase().includes(q)
-        );
-    }, [reviewers, search]);
+    // delete confirm
+    const [confirmOpen, setConfirmOpen] = useState(false);
+    const [pendingDelete, setPendingDelete] = useState(null);
 
-    const paginated = useMemo(() => {
-        const start = (page - 1) * perPage;
-        return filtered.slice(start, start + perPage);
-    }, [filtered, page, perPage]);
+    // stale guard
+    const reqIdRef = useRef(0);
 
-    const loadReviewers = useCallback(async () => {
-        setLoading(true);
-        setError("");
-        try {
-            const res = await fetchReviewers(); // expects { reviewers: [...], meta: {...} } or raw array
-            let data = [];
-            if (res.reviewers) {
-                data = res.reviewers;
-                if (res.meta && typeof res.meta.total === "number") {
-                    setTotal(res.meta.total);
-                } else {
-                    setTotal(data.length);
-                }
-            } else if (Array.isArray(res)) {
-                data = res;
-                setTotal(data.length);
-            } else if (res.data?.reviewers) {
-                data = res.data.reviewers;
-                setTotal(res.data.meta?.total ?? data.length);
-            }
-            setReviewers(data);
-        } catch (e) {
-            console.error(e);
-            setError(typeof e === "string" ? e : e?.message || "Failed to load reviewers.");
-        } finally {
-            setLoading(false);
-        }
-    }, [refreshFlag]);
-
-    // debounced search to avoid thrash
+    // debounced search
     const debouncedSearch = useMemo(
         () =>
             debounce((val) => {
@@ -95,20 +65,48 @@ export default function ReviewerAdminPage() {
         []
     );
 
+    const loadReviewers = useCallback(async () => {
+        const id = ++reqIdRef.current;
+        setLoading(true);
+        setError("");
+        try {
+            const res = await fetchReviewers();
+            if (reqIdRef.current !== id) return; // ignore stale
+
+            let data = [];
+            if (res?.reviewers) {
+                data = res.reviewers;
+                setTotal(typeof res?.meta?.total === "number" ? res.meta.total : data.length);
+            } else if (Array.isArray(res)) {
+                data = res;
+                setTotal(data.length);
+            } else if (res?.data?.reviewers) {
+                data = res.data.reviewers;
+                setTotal(res?.data?.meta?.total ?? data.length);
+            }
+            setReviewers(Array.isArray(data) ? data : []);
+        } catch (e) {
+            if (reqIdRef.current !== id) return;
+            console.error(e);
+            setError(typeof e === "string" ? e : e?.message || "Failed to load reviewers.");
+            setReviewers([]);
+            setTotal(0);
+        } finally {
+            if (reqIdRef.current === id) setLoading(false);
+        }
+    }, []);
+
     useEffect(() => {
         loadReviewers();
-        // cleanup debounce on unmount
-        return () => {
-            debouncedSearch.cancel();
-        };
-    }, [loadReviewers]);
+        return () => debouncedSearch.cancel();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [loadReviewers, refreshFlag]);
 
     // success / error auto clear
     useEffect(() => {
-        if (feedback) {
-            const t = setTimeout(() => setFeedback(null), 4000);
-            return () => clearTimeout(t);
-        }
+        if (!feedback) return;
+        const t = setTimeout(() => setFeedback(null), 4000);
+        return () => clearTimeout(t);
     }, [feedback]);
 
     const resetForm = () => {
@@ -118,8 +116,7 @@ export default function ReviewerAdminPage() {
 
     const validateForm = () => {
         if (!form.email || !form.name) return "Email and name are required.";
-        // basic email prefix/domain handling (expect full email)
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return "Invalid email format.";
+        if (!isValidEmail(form.email)) return "Invalid email format.";
         return null;
     };
 
@@ -135,19 +132,19 @@ export default function ReviewerAdminPage() {
         try {
             if (editingEmail) {
                 await updateReviewer(editingEmail, {
-                    name: form.name,
-                    active: form.active,
+                    name: form.name.trim(),
+                    active: !!form.active,
                     role: form.role,
-                    note: form.note,
+                    note: form.note?.trim() || "",
                 });
                 setFeedback({ type: "success", message: "Reviewer updated." });
             } else {
                 await addReviewer({
-                    email: form.email,
-                    name: form.name,
-                    active: form.active,
+                    email: form.email.trim().toLowerCase(),
+                    name: form.name.trim(),
+                    active: !!form.active,
                     role: form.role,
-                    note: form.note,
+                    note: form.note?.trim() || "",
                 });
                 setFeedback({ type: "success", message: "Reviewer added." });
             }
@@ -170,7 +167,7 @@ export default function ReviewerAdminPage() {
     const startEdit = (rev) => {
         setEditingEmail(rev.email);
         setForm({
-            email: rev.email,
+            email: rev.email || "",
             name: rev.name || "",
             active: !!rev.active,
             role: rev.role || "reviewer",
@@ -179,13 +176,17 @@ export default function ReviewerAdminPage() {
         window.scrollTo({ top: 0, behavior: "smooth" });
     };
 
-    const cancelEdit = () => resetForm();
+    const requestDelete = (email) => {
+        setPendingDelete(email);
+        setConfirmOpen(true);
+    };
 
-    const handleDelete = async (email) => {
-        if (!window.confirm(`Permanently delete reviewer "${email}"?`)) return;
+    const confirmDelete = async () => {
+        if (!pendingDelete) return;
         try {
-            await deleteReviewer(email);
+            await deleteReviewer(pendingDelete);
             setFeedback({ type: "success", message: "Deleted reviewer." });
+            if (editingEmail === pendingDelete) resetForm();
             setRefreshFlag((f) => f + 1);
             await loadReviewers();
         } catch (err) {
@@ -196,6 +197,9 @@ export default function ReviewerAdminPage() {
                 err?.message ||
                 "Deletion failed.";
             setFeedback({ type: "error", message: msg });
+        } finally {
+            setPendingDelete(null);
+            setConfirmOpen(false);
         }
     };
 
@@ -203,11 +207,46 @@ export default function ReviewerAdminPage() {
         debouncedSearch(e.target.value);
     };
 
-    const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
+    // filtered + sorted + paginated
+    const filtered = useMemo(() => {
+        if (!search.trim()) return reviewers;
+        const q = search.trim().toLowerCase();
+        return reviewers.filter(
+            (r) =>
+                (r.name || "").toLowerCase().includes(q) ||
+                (r.email || "").toLowerCase().includes(q)
+        );
+    }, [reviewers, search]);
+
+    const sorted = useMemo(() => {
+        const dir = sortDir === "asc" ? 1 : -1;
+        return [...filtered].sort((a, b) => {
+            const av = sortKey === "active" ? !!a.active : (a[sortKey] ?? "").toString().toLowerCase();
+            const bv = sortKey === "active" ? !!b.active : (b[sortKey] ?? "").toString().toLowerCase();
+            if (av < bv) return -1 * dir;
+            if (av > bv) return 1 * dir;
+            return 0;
+        });
+    }, [filtered, sortKey, sortDir]);
+
+    const paginated = useMemo(() => {
+        const start = (page - 1) * perPage;
+        return sorted.slice(start, start + perPage);
+    }, [sorted, page, perPage]);
+
+    const totalPages = Math.max(1, Math.ceil(sorted.length / perPage));
+
+    const toggleSort = (key) => {
+        if (key === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+        else {
+            setSortKey(key);
+            setSortDir("asc");
+        }
+    };
 
     return (
         <div className="max-w-4xl mx-auto mt-8">
-            <div className="bg-white p-6 rounded-2xl shadow-md">
+            <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-100">
                 <div className="flex flex-col sm:flex-row justify-between gap-4 mb-4">
                     <div>
                         <h2 className="text-2xl font-bold text-indigo-800">Reviewer Management</h2>
@@ -225,13 +264,9 @@ export default function ReviewerAdminPage() {
                                 disabled={loading}
                             />
                         </div>
-                        <div className="flex gap-2">
-                            <div className="text-sm text-gray-600">
-                                {filtered.length} result{filtered.length !== 1 && "s"}
-                            </div>
-                            <div className="text-sm text-gray-600">
-                                Page {page} / {totalPages}
-                            </div>
+                        <div className="flex gap-2 text-sm text-gray-600">
+                            <div>{sorted.length} result{sorted.length !== 1 && "s"}</div>
+                            <div>Page {page} / {totalPages}</div>
                         </div>
                     </div>
                 </div>
@@ -239,11 +274,19 @@ export default function ReviewerAdminPage() {
                 {/* Feedback */}
                 {feedback && (
                     <div
-                        role="alert"
-                        className={`mb-4 px-4 py-2 rounded ${feedback.type === "error" ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-800"
+                        role={feedback.type === "error" ? "alert" : "status"}
+                        aria-live="polite"
+                        className={`mb-4 px-4 py-2 rounded border ${feedback.type === "error"
+                            ? "bg-red-50 text-red-700 border-red-200"
+                            : "bg-emerald-50 text-emerald-800 border-emerald-200"
                             }`}
                     >
                         {feedback.message}
+                    </div>
+                )}
+                {error && (
+                    <div role="alert" className="mb-4 px-4 py-2 rounded bg-red-50 text-red-700 border border-red-200">
+                        {error}
                     </div>
                 )}
 
@@ -306,7 +349,7 @@ export default function ReviewerAdminPage() {
                             {editingEmail ? (submitting ? "Updating…" : "Update Reviewer") : submitting ? "Adding…" : "Add Reviewer"}
                         </Button>
                         {editingEmail && (
-                            <Button variant="secondary" type="button" onClick={cancelEdit}>
+                            <Button variant="secondary" type="button" onClick={resetForm}>
                                 Cancel
                             </Button>
                         )}
@@ -317,7 +360,7 @@ export default function ReviewerAdminPage() {
                 <div className="overflow-x-auto">
                     <div className="flex items-center justify-between mb-2">
                         <div className="text-sm text-gray-600">
-                            Showing {paginated.length} of {filtered.length} reviewer{filtered.length !== 1 && "s"}
+                            Showing {paginated.length} of {sorted.length} reviewer{sorted.length !== 1 && "s"}
                         </div>
                         <div className="flex gap-2">
                             <Select
@@ -338,14 +381,32 @@ export default function ReviewerAdminPage() {
                     </div>
 
                     <table className="min-w-full border-collapse text-sm">
-                        <thead>
-                            <tr className="bg-gray-100 text-left">
-                                <th className="px-3 py-2 font-medium">Email</th>
-                                <th className="px-3 py-2 font-medium">Name</th>
-                                <th className="px-3 py-2 font-medium">Role</th>
-                                <th className="px-3 py-2 font-medium">Active</th>
-                                <th className="px-3 py-2 font-medium">Note</th>
-                                <th className="px-3 py-2 font-medium">Actions</th>
+                        <thead className="sticky top-0 bg-gray-100 z-10">
+                            <tr className="text-left">
+                                {[
+                                    { key: "email", label: "Email" },
+                                    { key: "name", label: "Name" },
+                                    { key: "role", label: "Role" },
+                                    { key: "active", label: "Active" },
+                                    { key: "note", label: "Note", sortable: false },
+                                    { key: "actions", label: "Actions", sortable: false },
+                                ].map((col) => (
+                                    <th key={col.key} className="px-3 py-2 font-medium">
+                                        {col.sortable === false ? (
+                                            col.label
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                className="inline-flex items-center gap-1 hover:underline"
+                                                onClick={() => toggleSort(col.key)}
+                                                aria-label={`Sort by ${col.label}`}
+                                            >
+                                                {col.label}
+                                                {sortKey === col.key && <span aria-hidden="true">{sortDir === "asc" ? "↑" : "↓"}</span>}
+                                            </button>
+                                        )}
+                                    </th>
+                                ))}
                             </tr>
                         </thead>
                         <tbody>
@@ -361,16 +422,10 @@ export default function ReviewerAdminPage() {
                                         <td className="px-3 py-2 break-all">{r.email}</td>
                                         <td className="px-3 py-2">{r.name}</td>
                                         <td className="px-3 py-2">
-                                            <Badge variant={r.role === "admin" ? "model" : "pill"}>
-                                                {r.role}
-                                            </Badge>
+                                            <Badge variant={r.role === "admin" ? "model" : "pill"}>{r.role || "reviewer"}</Badge>
                                         </td>
                                         <td className="px-3 py-2">
-                                            {r.active ? (
-                                                <Badge variant="primary">Yes</Badge>
-                                            ) : (
-                                                <Badge variant="tag">No</Badge>
-                                            )}
+                                            {r.active ? <Badge variant="primary">Yes</Badge> : <Badge variant="tag">No</Badge>}
                                         </td>
                                         <td className="px-3 py-2">{r.note || "-"}</td>
                                         <td className="px-3 py-2 flex gap-2 flex-wrap">
@@ -380,7 +435,7 @@ export default function ReviewerAdminPage() {
                                             <Button
                                                 size="xs"
                                                 variant="danger"
-                                                onClick={() => handleDelete(r.email)}
+                                                onClick={() => requestDelete(r.email)}
                                                 aria-label={`Delete ${r.email}`}
                                             >
                                                 Delete
@@ -400,9 +455,7 @@ export default function ReviewerAdminPage() {
 
                     {/* Pagination controls */}
                     <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                        <div className="text-xs text-gray-600">
-                            Page {page} of {totalPages}
-                        </div>
+                        <div className="text-xs text-gray-600">Page {page} of {totalPages}</div>
                         <div className="flex gap-2">
                             <Button
                                 size="sm"
@@ -424,6 +477,20 @@ export default function ReviewerAdminPage() {
                     </div>
                 </div>
             </div>
+
+            {/* Delete confirm modal */}
+            <ConfirmModal
+                open={confirmOpen}
+                title="Delete reviewer"
+                description={`Permanently delete reviewer "${pendingDelete}"? This cannot be undone.`}
+                confirmText="Delete"
+                intent="danger"
+                onConfirm={confirmDelete}
+                onCancel={() => {
+                    setConfirmOpen(false);
+                    setPendingDelete(null);
+                }}
+            />
         </div>
     );
 }

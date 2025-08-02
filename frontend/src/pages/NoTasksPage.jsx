@@ -1,15 +1,22 @@
+import React, { forwardRef, memo } from "react";
 import { Link } from "react-router-dom";
 
-export default function NoTasksPage() {
+function NoTasksPageImpl(_, ref) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh] bg-gradient-to-b from-blue-50 via-white to-blue-100">
+    <div
+      ref={ref}
+      className="flex flex-col items-center justify-center min-h-[70vh] bg-gradient-to-b from-blue-50 via-white to-blue-100"
+    >
       <div className="text-5xl mb-4 animate-bounce">🎉</div>
       <div className="text-2xl sm:text-3xl font-black text-emerald-700 mb-3 tracking-wide">
         All abstracts are fully reviewed!
       </div>
-      <div className="text-gray-700 mb-8 text-base sm:text-lg">
-        <b>No more abstracts</b> need your review at this time.<br />
-        <span className="text-gray-500">Thank you for your valuable contributions to the project!</span>
+      <div className="text-gray-700 mb-8 text-base sm:text-lg text-center">
+        <b>No more abstracts</b> need your review at this time.
+        <br />
+        <span className="text-gray-500">
+          Thank you for your valuable contributions to the project!
+        </span>
       </div>
       <Link
         to="/"
@@ -23,3 +30,5 @@ export default function NoTasksPage() {
     </div>
   );
 }
+
+export default memo(forwardRef(NoTasksPageImpl));

@@ -1,5 +1,4 @@
-// src/components/AssertionEditor.jsx
-import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef, forwardRef, memo } from "react";
 import clsx from "clsx";
 import PropTypes from "prop-types";
 import AssertionForm from "./AssertionForm";
@@ -7,7 +6,6 @@ import Button from "./ui/Button";
 import Select from "./ui/Select";
 import Badge from "./ui/Badge";
 import Input from "./ui/Input";
-import Loader from "./ui/Loader";
 import ConfirmModal from "./ConfirmModal";
 import {
     isPerfectMatch,
@@ -17,7 +15,7 @@ import {
 } from "../utils";
 
 /** DecisionBadge now maps to semantic badge props */
-const DecisionBadge = ({ decision }) => {
+const DecisionBadge = memo(function DecisionBadge({ decision }) {
     const mapping = {
         accept: { label: "Accept", color: "success", variant: "solid" },
         modify: { label: "Modify", color: "warning", variant: "subtle" },
@@ -36,30 +34,20 @@ const DecisionBadge = ({ decision }) => {
             {info.label}
         </Badge>
     );
-};
+});
 
-DecisionBadge.propTypes = {
-    decision: PropTypes.string.isRequired,
-};
-
-/** Pill with validity visual hint */
-const Pill = ({ children, valid }) => (
-    <div
-        className={clsx(
-            "inline-flex items-center px-2 py-1 rounded-full text-[11px] font-medium mr-2",
-            valid
-                ? "bg-emerald-100 text-emerald-800"
-                : "bg-red-100 text-red-600"
-        )}
-    >
-        {children}
-    </div>
-);
-
-Pill.propTypes = {
-    children: PropTypes.node,
-    valid: PropTypes.bool,
-};
+function Pill({ children, valid }) {
+    return (
+        <div
+            className={clsx(
+                "inline-flex items-center px-2 py-1 rounded-full text-[11px] font-medium mr-2",
+                valid ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
+            )}
+        >
+            {children}
+        </div>
+    );
+}
 
 function shallowReviewStateEqual(a = [], b = []) {
     if (a.length !== b.length) return false;
@@ -75,27 +63,19 @@ function shallowReviewStateEqual(a = [], b = []) {
     return true;
 }
 
-/**
- * AssertionEditor props:
- *  idx: zero-based sentence index
- *  sentence: the sentence string
- *  assertions: array of assertion objects
- *  reviewState: external review state map per assertion index (object like {0:{decision,comment,isModified}, ...})
- *  onAddAssertion(sentenceIdx, assertion)
- *  onModifyAssertion(sentenceIdx, assertionIdx, updatedAssertion)
- *  onDeleteAssertion(sentenceIdx, assertionIdx)
- *  onReviewChange(sentenceIdx, assertionIdx, newReviewState)
- */
-export default function AssertionEditor({
-    idx,
-    sentence,
-    assertions = [],
-    reviewState = {},
-    onAddAssertion,
-    onModifyAssertion,
-    onDeleteAssertion,
-    onReviewChange,
-}) {
+function AssertionEditorImpl(
+    {
+        idx,
+        sentence,
+        assertions = [],
+        reviewState = {},
+        onAddAssertion,
+        onModifyAssertion,
+        onDeleteAssertion,
+        onReviewChange,
+    },
+    ref
+) {
     const sentenceIndex = idx + 1; // display 1-based
     const [localReviews, setLocalReviews] = useState(() =>
         assertions.map((_, i) => reviewState[i] || { decision: "accept", comment: "", isModified: false })
@@ -103,16 +83,16 @@ export default function AssertionEditor({
     const [showAddForm, setShowAddForm] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState({ open: false, assertionIdx: null });
 
-    const prevExternalRef = useRef(reviewState);
     // Sync external reviewState when it changes (shallow compare)
     useEffect(() => {
-        const externalArr = assertions.map((_, i) => reviewState[i] || { decision: "accept", comment: "", isModified: false });
+        const externalArr = assertions.map(
+            (_, i) => reviewState[i] || { decision: "accept", comment: "", isModified: false }
+        );
         if (!shallowReviewStateEqual(localReviews, externalArr)) {
             setLocalReviews(externalArr);
         }
-        prevExternalRef.current = reviewState;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [Object.keys(reviewState).length, assertions.length]);
+    }, [assertions.length, reviewState]);
 
     // Derive per-sentence overall decision
     const overallDecision = useMemo(() => {
@@ -139,22 +119,11 @@ export default function AssertionEditor({
         [onReviewChange, sentenceIndex]
     );
 
-    const handleDecisionChange = (i, value) => {
-        updateReviewState(i, { decision: value });
-    };
+    const handleDecisionChange = (i, value) => updateReviewState(i, { decision: value });
+    const handleCommentChange = (i, value) => updateReviewState(i, { comment: value });
+    const markModified = (i) => updateReviewState(i, { isModified: true, decision: "modify" });
 
-    const handleCommentChange = (i, value) => {
-        updateReviewState(i, { comment: value });
-    };
-
-    const markModified = (i) => {
-        updateReviewState(i, { isModified: true, decision: "modify" });
-    };
-
-    const requestDelete = (i) => {
-        setConfirmDelete({ open: true, assertionIdx: i });
-    };
-
+    const requestDelete = (i) => setConfirmDelete({ open: true, assertionIdx: i });
     const confirmDeleteAssertion = () => {
         const i = confirmDelete.assertionIdx;
         setConfirmDelete({ open: false, assertionIdx: null });
@@ -169,7 +138,10 @@ export default function AssertionEditor({
     const hasAssertions = Array.isArray(assertions) && assertions.length > 0;
 
     return (
-        <div className="relative bg-white dark:bg-[#1f2937] rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-6 transition-all">
+        <div
+            ref={ref}
+            className="relative bg-white dark:bg-[#1f2937] rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-6 transition-all"
+        >
             {/* Header */}
             <div className="flex flex-col lg:flex-row justify-between items-start gap-4">
                 <div className="flex gap-4 flex-1 flex-wrap">
@@ -249,9 +221,7 @@ export default function AssertionEditor({
                                             <div className="flex flex-col">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">Predicate:</div>
-                                                    <Pill valid={predicateValid}>
-                                                        {a.negation ? `neg_${a.predicate}` : a.predicate}
-                                                    </Pill>
+                                                    <Pill valid={predicateValid}>{a.negation ? `neg_${a.predicate}` : a.predicate}</Pill>
                                                 </div>
                                                 <div className="mt-1">
                                                     {!predicateValid && (
@@ -336,11 +306,7 @@ export default function AssertionEditor({
                                             >
                                                 Edit
                                             </Button>
-                                            <Button
-                                                size="sm"
-                                                variant="destructive"
-                                                onClick={() => requestDelete(i)}
-                                            >
+                                            <Button size="sm" variant="destructive" onClick={() => requestDelete(i)}>
                                                 Delete
                                             </Button>
                                         </div>
@@ -373,7 +339,6 @@ export default function AssertionEditor({
                             newAssertion.is_new = true;
                             onAddAssertion?.(sentenceIndex, newAssertion);
                             setShowAddForm(false);
-                            // ensure review state reflects new assertion
                             updateReviewState(assertions.length, {
                                 decision: "accept",
                                 comment: newAssertion.comment || "",
@@ -403,22 +368,18 @@ export default function AssertionEditor({
     );
 }
 
-AssertionEditor.propTypes = {
-    idx: PropTypes.number.isRequired,
-    sentence: PropTypes.string.isRequired,
-    assertions: PropTypes.arrayOf(PropTypes.object),
-    reviewState: PropTypes.object,
-    onAddAssertion: PropTypes.func,
-    onModifyAssertion: PropTypes.func,
-    onDeleteAssertion: PropTypes.func,
-    onReviewChange: PropTypes.func,
-};
+if (process.env.NODE_ENV !== "production") {
+    AssertionEditorImpl.propTypes = {
+        idx: PropTypes.number.isRequired,
+        sentence: PropTypes.string.isRequired,
+        assertions: PropTypes.arrayOf(PropTypes.object),
+        reviewState: PropTypes.object,
+        onAddAssertion: PropTypes.func,
+        onModifyAssertion: PropTypes.func,
+        onDeleteAssertion: PropTypes.func,
+        onReviewChange: PropTypes.func,
+    };
+}
 
-AssertionEditor.defaultProps = {
-    assertions: [],
-    reviewState: {},
-    onAddAssertion: null,
-    onModifyAssertion: null,
-    onDeleteAssertion: null,
-    onReviewChange: null,
-};
+const AssertionEditor = memo(forwardRef(AssertionEditorImpl));
+export default AssertionEditor;

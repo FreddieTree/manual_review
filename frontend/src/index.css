@@ -2,15 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ---------------------------------------------------
-   Design tokens fallback (overridden by generated CSS)
-   --------------------------------------------------- */
-:root {
-  /* Typography & fonts */
+/* -----------------------------
+   Design tokens (global)
+   ----------------------------- */
+:root,
+[data-theme="light"] {
+  /* Typography */
   --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 
-  /* Color palette */
+  /* Colors */
   --color-background: #f8fafc;
   --color-surface: #ffffff;
   --color-text: #1e2a44;
@@ -20,24 +21,33 @@
   --color-primary-hover: #1f4fc3;
   --color-link: #2563eb;
   --color-link-hover: #1d4ed8;
-  --color-radius: 1rem;
 
-  /* Shadows (Apple-like soft elevation) */
+  /* Radii & shadows */
+  --radius: 1rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
   --shadow-light: 0 20px 60px -10px rgba(43,93,215,0.08);
   --shadow-default: 0 30px 90px -15px rgba(43,93,215,0.12);
   --shadow-hover: 0 40px 100px -15px rgba(43,93,215,0.16);
 
-  /* Motion / transition */
+  /* Motion */
   --transition-base: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-fast: all 0.15s cubic-bezier(0.3, 0, 0.1, 1);
-
-  /* Accessibility / utilities */
-  --focus-ring: 2px solid rgba(43,93,215,0.9);
+  --focus-ring-color: rgba(43,93,215,0.9);
+  --focus-outline: 2px solid var(--focus-ring-color);
   --focus-offset: 3px;
+
+  /* Inputs */
+  --input-bg: var(--color-surface);
+  --input-border: var(--color-border);
+  --input-focus-ring: 0 0 0 3px rgba(43,93,215,0.35);
+
+  /* Scrollbar */
+  --scrollbar-track: #f0f4f8;
+  --scrollbar-thumb: #bac8e0;
 }
 
-/* Dark theme overrides (supports [data-theme="dark"], .dark, and auto via media query) */
-[data-theme="dark"], .dark {
+[data-theme="dark"],
+.dark {
   --color-background: #0f172a;
   --color-surface: #1f2a44;
   --color-text: #e2e8ff;
@@ -45,9 +55,16 @@
   --color-border: #2a3658;
   --color-link: #7daaff;
   --color-link-hover: #a6c8ff;
+
+  --scrollbar-track: #1f2937;
+  --scrollbar-thumb: #475569;
+
+  --input-bg: #1f2a44;
+  --input-border: rgba(255,255,255,0.12);
+  --input-focus-ring: 0 0 0 3px rgba(99,102,241,0.2);
 }
 
-/* System preference fallback when theme not explicitly set */
+/* System preference (fallback when theme not set) */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
     --color-background: #0f172a;
@@ -57,22 +74,19 @@
     --color-border: #2a3658;
     --color-link: #7daaff;
     --color-link-hover: #a6c8ff;
+
+    --scrollbar-track: #1f2937;
+    --scrollbar-thumb: #475569;
+
+    --input-bg: #1f2a44;
+    --input-border: rgba(255,255,255,0.12);
+    --input-focus-ring: 0 0 0 3px rgba(99,102,241,0.2);
   }
 }
 
-/* High contrast mode hints (optional enhancement) */
-@media (prefers-contrast: more) {
-  :root {
-    --color-text: #ffffff;
-    --color-background: #0f1f44;
-    --color-surface: #1f2a44;
-    --color-border: #4a5b8c;
-  }
-}
-
-/* ---------------------------------------------------
-   Base element styles
-   --------------------------------------------------- */
+/* -----------------------------
+   Base elements
+   ----------------------------- */
 html {
   scroll-behavior: smooth;
   -webkit-font-smoothing: antialiased;
@@ -89,7 +103,6 @@ body {
   padding: 0;
 }
 
-/* Headings consistent weight/spacing */
 h1, h2, h3, h4 {
   font-weight: 700;
   line-height: 1.2;
@@ -97,109 +110,71 @@ h1, h2, h3, h4 {
   margin: 0;
 }
 
-/* Paragraph reset */
-p {
-  margin: 0;
-}
+p { margin: 0; }
 
-/* Links */
 a {
   color: var(--color-link);
   text-decoration: none;
   transition: color var(--transition-base);
 }
-a:hover,
-a:focus {
+a:hover, a:focus {
   color: var(--color-link-hover);
   text-decoration: underline;
 }
-a:focus-visible {
-  outline: var(--focus-ring);
-  outline-offset: var(--focus-offset);
-}
 
-/* Accessible focus for all interactive */
+/* Accessible focus rings */
 :focus-visible {
-  outline: var(--focus-ring);
+  outline: var(--focus-outline);
   outline-offset: var(--focus-offset);
 }
 
-/* ---------------------------------------------------
-   Scrollbar (cross-theme, accessible)
-   --------------------------------------------------- */
-::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
-  background: var(--color-muted);
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
+/* -----------------------------
+   Scrollbar
+   ----------------------------- */
+::-webkit-scrollbar { width: 12px; height: 12px; background: var(--color-muted); }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
 ::-webkit-scrollbar-thumb {
-  background: rgba(100,116,139,0.5);
+  background: var(--scrollbar-thumb);
   border-radius: 8px;
-  border: 3px solid var(--color-muted);
+  border: 3px solid var(--scrollbar-track);
 }
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(100,116,139,0.75);
-}
+::-webkit-scrollbar-thumb:hover { filter: brightness(1.05); }
 
-/* ---------------------------------------------------
-   Form & input enhancements
-   --------------------------------------------------- */
-input,
-select,
-textarea,
-button {
+/* -----------------------------
+   Forms & inputs
+   ----------------------------- */
+input, select, textarea, button {
   font-family: inherit;
   transition: var(--transition-base);
   background: none;
   border: none;
   outline: none;
 }
-
-/* Inputs/selects consistent default appearance */
-input,
-select,
-textarea {
-  background-color: var(--color-surface);
+input, select, textarea {
+  background-color: var(--input-bg);
   padding: 0.65rem 1rem;
-  border: 1px solid var(--color-border);
-  border-radius: calc(var(--color-radius) * 0.65);
+  border: 1px solid var(--input-border);
+  border-radius: calc(var(--radius) * 0.65);
   color: var(--color-text);
   font-size: 1rem;
   width: 100%;
   box-sizing: border-box;
-  position: relative;
   appearance: none;
 }
-input:focus,
-select:focus,
-textarea:focus {
-  box-shadow: 0 0 0 3px rgba(43,93,215,0.35);
+input:focus, select:focus, textarea:focus {
+  box-shadow: var(--input-focus-ring);
   border-color: var(--color-primary);
 }
+[disabled], .disabled { opacity: 0.55; cursor: not-allowed; }
 
-/* Disabled */
-[disabled],
-.disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-/* Autofill smooth transition (WebKit) */
+/* WebKit autofill */
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0px 1000px var(--color-surface) inset;
-  box-shadow: 0 0 0px 1000px var(--color-surface) inset;
+  -webkit-box-shadow: 0 0 0px 1000px var(--input-bg) inset;
+  box-shadow: 0 0 0px 1000px var(--input-bg) inset;
   -webkit-text-fill-color: var(--color-text);
-  transition: background-color 5000s ease-in-out 0s; /* keep custom bg */
-}
-
-/* For non-WebKit browsers fallback */
-input:-internal-autofill-selected {
-  background-color: var(--color-surface) !important;
+  transition: background-color 5000s ease-in-out 0s;
 }
 
 /* Placeholder */
@@ -208,62 +183,50 @@ input:-internal-autofill-selected {
   font-weight: 500;
 }
 
-/* ---------------------------------------------------
-   Utility classes (Apple-style helpers)
-   --------------------------------------------------- */
-.bg-surface {
-  background-color: var(--color-surface);
-}
-.bg-muted {
-  background-color: var(--color-muted);
-}
-.text-muted {
-  color: rgba(30,42,68,0.6);
-}
+/* -----------------------------
+   Utilities (Apple-like)
+   ----------------------------- */
+.bg-surface { background-color: var(--color-surface); }
+.bg-muted   { background-color: var(--color-muted); }
+.text-muted { color: color-mix(in oklab, var(--color-text) 60%, transparent); }
 
-/* Rounded helpers */
-.rounded-token {
-  border-radius: var(--color-radius);
-}
-.rounded-apple {
-  border-radius: calc(var(--color-radius) * 1.2);
-}
+.rounded-token { border-radius: var(--radius); }
+.rounded-apple { border-radius: var(--radius-lg); }
 
-/* Elevation / card */
-.shadow-card {
-  box-shadow: var(--shadow-default);
-  transition: box-shadow var(--transition-base), transform var(--transition-base);
-}
-.hover-elevate:hover {
-  box-shadow: var(--shadow-hover);
-  transform: translateY(-1px);
-}
+.shadow-card      { box-shadow: var(--shadow-default); }
+.hover-elevate:hover { box-shadow: var(--shadow-hover); transform: translateY(-1px); }
+.transition-elevate { transition: box-shadow var(--transition-base), transform var(--transition-base); }
 
-/* Glass / frosted card (Apple feel) */
+/* Glass card (with backdrop-filter support only) */
 .glass-card {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(16px);
-  border-radius: calc(var(--color-radius) * 1.1);
+  border-radius: var(--radius-lg);
   box-shadow: var(--shadow-light);
-  border: 1px solid rgba(255,255,255,0.35);
+  border: 1px solid color-mix(in oklab, #fff 35%, transparent);
+  background: color-mix(in oklab, #fff 75%, transparent);
 }
-.dark .glass-card,
-[data-theme="dark"] .glass-card {
-  background: rgba(31, 41, 55, 0.75);
+[data-theme="dark"] .glass-card, .dark .glass-card {
   border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(31,41,55,0.75);
+}
+@supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+  .glass-card {
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+  }
 }
 
-/* Soft focus glow */
-.soft-focus {
-  box-shadow: 0 0 50px rgba(99, 102, 241, 0.15);
+/* Soft focus glow on groups */
+.focus-glow { position: relative; }
+.focus-glow:focus-within::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: calc(var(--radius-lg) + 2px);
+  box-shadow: 0 0 18px rgba(99,102,241,0.35);
+  pointer-events: none;
 }
 
-/* Smooth elevation transition */
-.transition-elevate {
-  transition: box-shadow var(--transition-base), transform var(--transition-base);
-}
-
-/* Truncation */
+/* Text truncation */
 .truncate-multiline {
   display: -webkit-box;
   -webkit-line-clamp: 3;
@@ -271,56 +234,34 @@ input:-internal-autofill-selected {
   overflow: hidden;
 }
 
-/* Utility for consistent spacing hints (can be extended via tokens) */
-.spaced {
-  padding: 1rem;
+/* Subtle divider & pill badge */
+.divider { height: 1px; background: var(--color-border); margin: 1rem 0; }
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 0.25rem .75rem;
+  font-size: .65rem; font-weight: 600;
+  border-radius: 999px; text-transform: uppercase; letter-spacing: .5px;
+  background: rgba(16,185,129,.12); color: #065f46;
 }
 
-/* ---------------------------------------------------
-   Responsive & accessibility helpers
-   --------------------------------------------------- */
-/* Reduce motion for users who request it */
+/* Reduced motion */
 @media (prefers-reduced-motion: reduce) {
-  * {
-    transition: none !important;
-    animation: none !important;
-    scroll-behavior: auto;
-  }
+  * { transition: none !important; animation: none !important; scroll-behavior: auto; }
 }
 
-/* Focus ring fallback for legacy browsers */
-button:focus-visible,
-input:focus-visible,
-select:focus-visible {
-  outline: var(--focus-ring);
-  outline-offset: var(--focus-offset);
-}
-
-/* ---------------------------------------------------
-   Utility for theme transition (soft switch)
-   --------------------------------------------------- */
-.theme-transition {
-  transition: background-color var(--transition-base), color var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
-}
-
-/* ---------------------------------------------------
-   Accessibility enhancements
-   --------------------------------------------------- */
-/* High contrast assist (user override) */
+/* Forced-colors assist */
 @media (forced-colors: active) {
-  :root {
-    forced-color-adjust: none;
-  }
-  body {
-    background: Window;
-    color: WindowText;
-  }
-  a {
-    color: Highlight;
-  }
-  input, select, textarea {
-    background: Field;
-    color: FieldText;
-    border: 1px solid Highlight;
-  }
+  :root { forced-color-adjust: none; }
+  body { background: Window; color: WindowText; }
+  a { color: Highlight; }
+  input, select, textarea { background: Field; color: FieldText; border: 1px solid Highlight; }
+}
+
+/* Theme transition helper */
+.theme-transition {
+  transition:
+    background-color var(--transition-base),
+    color var(--transition-base),
+    border-color var(--transition-base),
+    box-shadow var(--transition-base);
 }

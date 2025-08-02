@@ -1,17 +1,15 @@
-import { useEffect, useCallback } from "react";
-import clsx from "clsx";
+import React, { useEffect, useCallback, forwardRef, memo } from "react";
 import PropTypes from "prop-types";
+import clsx from "clsx";
 import { useTheme } from "../hooks/useTheme";
 
 /**
- * ThemeSwitcher: picks between light / dark / system with accessible buttons.
- * Apple-style minimal, with subtle backdrop blur and clear selection.
+ * 轻量主题切换：light / dark / system
  */
-export default function ThemeSwitcher({ className = "" }) {
+function ThemeSwitcherImpl({ className = "" }, ref) {
     const { mode, resolved, setTheme } = useTheme();
 
     useEffect(() => {
-        // expose resolved for CSS fallback / data attribute
         document.documentElement.dataset.theme = resolved;
     }, [resolved]);
 
@@ -33,6 +31,7 @@ export default function ThemeSwitcher({ className = "" }) {
 
     return (
         <div
+            ref={ref}
             role="group"
             aria-label="Theme switcher"
             className={clsx(
@@ -62,9 +61,7 @@ export default function ThemeSwitcher({ className = "" }) {
                         )}
                     >
                         {o.label}
-                        {selected && (
-                            <span className="sr-only"> (selected)</span>
-                        )}
+                        {selected && <span className="sr-only"> (selected)</span>}
                     </button>
                 );
             })}
@@ -76,10 +73,10 @@ export default function ThemeSwitcher({ className = "" }) {
     );
 }
 
-ThemeSwitcher.propTypes = {
-    className: PropTypes.string,
-};
+if (process.env.NODE_ENV !== "production") {
+    ThemeSwitcherImpl.propTypes = {
+        className: PropTypes.string,
+    };
+}
 
-ThemeSwitcher.defaultProps = {
-    className: "",
-};
+export default memo(forwardRef(ThemeSwitcherImpl));

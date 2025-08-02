@@ -1,99 +1,131 @@
 // src/hooks/usePricing.js
 import { useState, useEffect, useCallback, useRef } from "react";
-import { getPricing } from "../api";
+import { request } from "../api";
 
 /**
- * usePricing: 获取并周期性刷新某 abstract 的定价（带退避、缓存、手动 refetch）
+ * usePricing
+ *  - 拉取并轮询 /api/review/pricing?abstract=<id>
+ *  - 失败指数退避；页面隐藏时暂停轮询（可配置）
+ *  - 支持 AbortController，避免竞态与内存泄漏
+ *
  * @param {string} abstractId
- * @param {number} intervalSec base 轮询间隔（失败后会退避）
- * @param {object} options
- *    enabled: boolean 是否启用（默认 true）
+ * @param {number} intervalSec 基础轮询间隔（秒）
+ * @param {{ enabled?: boolean, pauseOnHidden?: boolean }} options
  */
 export function usePricing(abstractId, intervalSec = 15, options = {}) {
-    const { enabled = true } = options;
+    const { enabled = true, pauseOnHidden = true } = options;
+
     const [pricing, setPricing] = useState(null);
-    const [loading, setLoading] = useState(Boolean(abstractId));
+    const [loading, setLoading] = useState(Boolean(abstractId && enabled));
     const [error, setError] = useState(null);
     const [isStale, setIsStale] = useState(false);
 
     const abortCtrlRef = useRef(null);
-    const backoffRef = useRef(0); // failure count
-    const intervalRef = useRef(null);
-    const lastFetchedId = useRef(null);
-    const isMounted = useRef(true);
+    const timerRef = useRef(null);
+    const backoffRef = useRef(0);
+    const lastIdRef = useRef(null);
+    const mountedRef = useRef(false);
 
-    const fetchPricing = useCallback(
+    const clearTimer = () => {
+        if (timerRef.current) {
+            clearTimeout(timerRef.current);
+            timerRef.current = null;
+        }
+    };
+
+    const doFetch = useCallback(
         async ({ force = false } = {}) => {
-            if (!abstractId || !enabled) return;
-            // avoid duplicate concurrent for same id
-            if (lastFetchedId.current === abstractId && !force && loading) return;
+            if (!enabled || !abstractId) return;
 
-            // abort previous
+            // 若同一 ID 且已有加载中且非强制，则跳过
+            if (lastIdRef.current === abstractId && !force && loading) return;
+
+            // 取消上一次请求
             abortCtrlRef.current?.abort();
             const controller = new AbortController();
             abortCtrlRef.current = controller;
 
             setLoading(true);
             setError(null);
+
             try {
-                const data = await getPricing({ params: { abstractId } }); // assume API can take param; backend adapt if needed
-                if (!isMounted.current) return;
+                const data = await request({
+                    method: "GET",
+                    url: "/review/pricing",
+                    params: { abstract: abstractId }, // 后端期望参数名为 abstract/abstractId/pmid
+                    signal: controller.signal,
+                });
+                if (!mountedRef.current) return;
                 setPricing(data);
                 setIsStale(false);
                 backoffRef.current = 0;
-                lastFetchedId.current = abstractId;
-                setError(null);
+                lastIdRef.current = abstractId;
             } catch (e) {
-                if (!isMounted.current) return;
-                backoffRef.current = Math.min(backoffRef.current + 1, 5); // cap exponent
+                if (!mountedRef.current) return;
+                backoffRef.current = Math.min(backoffRef.current + 1, 5);
                 setError(e);
-                // mark stale only if we had previous data
                 if (pricing) setIsStale(true);
             } finally {
-                if (!isMounted.current) return;
+                if (!mountedRef.current) return;
                 setLoading(false);
             }
         },
-        [abstractId, enabled] // intentionally omit pricing to avoid loop
+        [abstractId, enabled] // 故意不把 pricing 放依赖，避免循环触发
     );
 
-    // auto polling with backoff logic
+    // 轮询调度（指数退避），可在页面隐藏时暂停
     useEffect(() => {
-        if (!enabled || !abstractId) return () => { };
-        isMounted.current = true;
+        mountedRef.current = true;
 
-        // initial fetch
-        fetchPricing({ force: true });
+        const shouldRun = enabled && Boolean(abstractId);
+        if (!shouldRun) {
+            clearTimer();
+            return () => {
+                mountedRef.current = false;
+                abortCtrlRef.current?.abort();
+            };
+        }
 
-        const scheduleNext = () => {
-            const failures = backoffRef.current;
-            // exponential backoff: interval * 2^failures, capped to 5x base
-            const delay = Math.min(intervalSec * Math.pow(2, failures), intervalSec * 8) * 1000;
-            intervalRef.current = setTimeout(async () => {
-                await fetchPricing();
-                if (isMounted.current) scheduleNext();
-            }, delay);
+        const isHidden = () => document.visibilityState === "hidden";
+        const schedule = () => {
+            if (!mountedRef.current) return;
+            // 页面隐藏时暂停轮询（可选）
+            if (pauseOnHidden && isHidden()) {
+                timerRef.current = setTimeout(schedule, 1000);
+                return;
+            }
+            const fail = backoffRef.current;
+            const delayMs = Math.min(intervalSec * Math.pow(2, fail), intervalSec * 8) * 1000;
+            timerRef.current = setTimeout(async () => {
+                await doFetch();
+                schedule();
+            }, delayMs);
         };
 
-        scheduleNext();
+        // 首次拉取
+        doFetch({ force: true });
+        schedule();
+
+        const visHandler = () => {
+            if (!pauseOnHidden) return;
+            // 切回可见时立即刷新
+            if (document.visibilityState === "visible") {
+                clearTimer();
+                doFetch({ force: true });
+                schedule();
+            }
+        };
+        document.addEventListener("visibilitychange", visHandler);
 
         return () => {
-            isMounted.current = false;
-            clearTimeout(intervalRef.current);
+            mountedRef.current = false;
+            document.removeEventListener("visibilitychange", visHandler);
+            clearTimer();
             abortCtrlRef.current?.abort();
         };
-    }, [abstractId, intervalSec, enabled, fetchPricing]);
+    }, [abstractId, intervalSec, enabled, pauseOnHidden, doFetch]);
 
-    // manual refetch exposed
-    const refetch = useCallback(() => {
-        return fetchPricing({ force: true });
-    }, [fetchPricing]);
+    const refetch = useCallback(() => doFetch({ force: true }), [doFetch]);
 
-    return {
-        pricing,
-        loading,
-        error,
-        isStale,
-        refetch,
-    };
+    return { pricing, loading, error, isStale, refetch };
 }

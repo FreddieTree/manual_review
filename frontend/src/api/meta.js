@@ -1,3 +1,8 @@
-import client from "./client";
-export const getVocab = () => client.get("/meta/vocab");
-export const getHealth = () => client.get("/meta/health");
+import { get } from "./client";
+
+// 后端已稳定：/api/meta/vocab, /api/meta/health
+export const getVocab = ({ signal } = {}) =>
+    get("/meta/vocab", { signal }, { unwrap: "data" });
+
+export const getHealth = ({ signal } = {}) =>
+    get("/meta/health", { signal }, { unwrap: "data" });

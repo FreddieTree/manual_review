@@ -1,5 +1,4 @@
-// src/components/AssertionSummaryPanel.jsx
-import React, { useMemo, useCallback } from "react";
+import React, { useMemo, useCallback, forwardRef, memo } from "react";
 import PropTypes from "prop-types";
 import clsx from "clsx";
 import DecisionBadge from "./DecisionBadge";
@@ -14,23 +13,17 @@ const DECISION_INFO = {
 };
 
 /** Legend item */
-const LegendItem = ({ label, colorClass }) => (
-    <div className="flex items-center gap-2 text-[11px]">
-        <span
-            className={clsx("w-3 h-3 rounded-full flex-shrink-0", colorClass)}
-            aria-hidden="true"
-        />
-        <span>{label}</span>
-    </div>
-);
-
-LegendItem.propTypes = {
-    label: PropTypes.string.isRequired,
-    colorClass: PropTypes.string.isRequired,
-};
+const LegendItem = memo(function LegendItem({ label, colorClass }) {
+    return (
+        <div className="flex items-center gap-2 text-[11px]">
+            <span className={clsx("w-3 h-3 rounded-full flex-shrink-0", colorClass)} aria-hidden="true" />
+            <span>{label}</span>
+        </div>
+    );
+});
 
 /** Stacked bar for decisions */
-const SentenceBar = ({ counts, total, ariaLabel }) => {
+const SentenceBar = memo(function SentenceBar({ counts, total, ariaLabel }) {
     const pct = (n) => (total > 0 ? (n / total) * 100 : 0);
     return (
         <div
@@ -55,16 +48,7 @@ const SentenceBar = ({ counts, total, ariaLabel }) => {
                     default:
                         bg = "rgba(107,114,128,0.85)";
                 }
-                return (
-                    <div
-                        key={key}
-                        className="transition-all"
-                        style={{
-                            width: `${pct(value)}%`,
-                            backgroundColor: bg,
-                        }}
-                    />
-                );
+                return <div key={key} className="transition-all" style={{ width: `${pct(value)}%`, backgroundColor: bg }} />;
             })}
             <span className="sr-only">
                 {VALID_DECISIONS.map((k) => {
@@ -76,27 +60,11 @@ const SentenceBar = ({ counts, total, ariaLabel }) => {
             </span>
         </div>
     );
-};
+});
 
-SentenceBar.propTypes = {
-    counts: PropTypes.object.isRequired,
-    total: PropTypes.number.isRequired,
-    ariaLabel: PropTypes.string,
-};
-
-export default function AssertionSummaryPanel({
-    sentenceResults = [],
-    reviewStatesMap = {},
-    overallDecision = null,
-}) {
+function AssertionSummaryPanelImpl({ sentenceResults = [], reviewStatesMap = {}, overallDecision = null }, ref) {
     const aggregate = useMemo(() => {
-        const summary = {
-            accept: 0,
-            modify: 0,
-            reject: 0,
-            uncertain: 0,
-            totalAssertions: 0,
-        };
+        const summary = { accept: 0, modify: 0, reject: 0, uncertain: 0, totalAssertions: 0 };
         sentenceResults.forEach((s) => {
             const states = reviewStatesMap?.[s.sentence_index] || [];
             states.forEach((st) => {
@@ -117,7 +85,10 @@ export default function AssertionSummaryPanel({
     }, []);
 
     return (
-        <div className="bg-white dark:bg-[#1f2937] rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-5 w-full">
+        <div
+            ref={ref}
+            className="bg-white dark:bg-[#1f2937] rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-5 w-full"
+        >
             {/* Header */}
             <div className="flex flex-wrap justify-between items-start gap-3">
                 <div className="flex flex-col">
@@ -125,16 +96,12 @@ export default function AssertionSummaryPanel({
                         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 leading-tight">
                             Review Summary
                         </h2>
-                        <div className="text-sm text-gray-500 dark:text-gray-400">
-                            Sentence & assertion breakdown
-                        </div>
+                        <div className="text-sm text-gray-500 dark:text-gray-400">Sentence & assertion breakdown</div>
                     </div>
                 </div>
                 {overallDecision && (
                     <div className="flex items-center gap-2">
-                        <div className="text-[11px] text-gray-500 uppercase tracking-wider">
-                            Overall
-                        </div>
+                        <div className="text-[11px] text-gray-500 uppercase tracking-wider">Overall</div>
                         <DecisionBadge decision={overallDecision} />
                     </div>
                 )}
@@ -159,9 +126,7 @@ export default function AssertionSummaryPanel({
                     </div>
 
                     <div className="mt-1 flex flex-col gap-2">
-                        <div className="text-[11px] uppercase text-gray-500 tracking-wide">
-                            Distribution
-                        </div>
+                        <div className="text-[11px] uppercase text-gray-500 tracking-wide">Distribution</div>
                         <SentenceBar
                             counts={{
                                 accept: aggregate.accept,
@@ -175,9 +140,7 @@ export default function AssertionSummaryPanel({
                         <div className="flex gap-6 flex-wrap mt-2">
                             {VALID_DECISIONS.map((key) => (
                                 <div key={key} className="flex flex-col">
-                                    <div className="text-[12px] text-gray-500">
-                                        {DECISION_INFO[key].label}
-                                    </div>
+                                    <div className="text-[12px] text-gray-500">{DECISION_INFO[key].label}</div>
                                     <div
                                         className={clsx("text-lg font-semibold", {
                                             "text-emerald-700": key === "accept",
@@ -213,9 +176,7 @@ export default function AssertionSummaryPanel({
                             aria-label={`Sentence ${s.sentence_index} summary`}
                         >
                             <div className="flex items-center gap-3 flex-1 min-w-0">
-                                <div className="text-sm font-medium w-10 flex-shrink-0">
-                                    S{s.sentence_index}
-                                </div>
+                                <div className="text-sm font-medium w-10 flex-shrink-0">S{s.sentence_index}</div>
                                 <div className="flex-1">
                                     <SentenceBar
                                         counts={counts}
@@ -224,17 +185,12 @@ export default function AssertionSummaryPanel({
                                     />
                                 </div>
                                 <div className="text-[11px] text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                                    {total > 0
-                                        ? `${total} assertion${total > 1 ? "s" : ""}`
-                                        : "No assertions"}
+                                    {total > 0 ? `${total} assertion${total > 1 ? "s" : ""}` : "No assertions"}
                                 </div>
                             </div>
                             <div className="flex items-center gap-2 mt-2 sm:mt-0">
                                 <div className="text-[11px]">Dominant</div>
-                                <Tooltip
-                                    label={`Most frequent decision: ${DECISION_INFO[dominant].label}`}
-                                    placement="top"
-                                >
+                                <Tooltip label={`Most frequent decision: ${DECISION_INFO[dominant].label}`} placement="top">
                                     <div>
                                         <DecisionBadge decision={dominant} />
                                     </div>
@@ -248,8 +204,13 @@ export default function AssertionSummaryPanel({
     );
 }
 
-AssertionSummaryPanel.propTypes = {
-    sentenceResults: PropTypes.arrayOf(PropTypes.object),
-    reviewStatesMap: PropTypes.object,
-    overallDecision: PropTypes.string,
-};
+if (process.env.NODE_ENV !== "production") {
+    AssertionSummaryPanelImpl.propTypes = {
+        sentenceResults: PropTypes.arrayOf(PropTypes.object),
+        reviewStatesMap: PropTypes.object,
+        overallDecision: PropTypes.string,
+    };
+}
+
+const AssertionSummaryPanel = memo(forwardRef(AssertionSummaryPanelImpl));
+export default AssertionSummaryPanel;

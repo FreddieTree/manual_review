@@ -1,5 +1,4 @@
-// src/components/AbstractMetaCard.jsx
-import React, { useMemo, useState } from "react";
+import React, { forwardRef, useMemo, useState, memo } from "react";
 import clsx from "clsx";
 import PropTypes from "prop-types";
 import Badge from "./ui/Badge";
@@ -12,7 +11,7 @@ import {
 } from "@heroicons/react/24/outline";
 
 /** 安全高亮 */
-function Highlighter({ text = "", queries = [] }) {
+const Highlighter = memo(function Highlighter({ text = "", queries = [] }) {
     const normalized = useMemo(() => {
         if (!queries) return [];
         if (Array.isArray(queries)) return queries.filter(Boolean).map((q) => q.trim()).filter(Boolean);
@@ -57,25 +56,27 @@ function Highlighter({ text = "", queries = [] }) {
             )}
         </>
     );
-}
+});
 
 /** 信息行（两列栅格） */
-const InfoRow = ({ term, children, className = "" }) => (
-    <div
-        className={clsx("items-start", className)}
-        style={{
-            display: "grid",
-            gridTemplateColumns: "100px 1fr",
-            columnGap: "16px",
-            rowGap: "10px",
-            fontSize: "15px",
-            lineHeight: 1.5,
-        }}
-    >
-        <dt className="text-slate-600 dark:text-slate-300 font-medium select-none">{term}</dt>
-        <dd className="text-slate-900 dark:text-slate-100">{children}</dd>
-    </div>
-);
+const InfoRow = memo(function InfoRow({ term, children, className = "" }) {
+    return (
+        <div
+            className={clsx("items-start", className)}
+            style={{
+                display: "grid",
+                gridTemplateColumns: "100px 1fr",
+                columnGap: "16px",
+                rowGap: "10px",
+                fontSize: "15px",
+                lineHeight: 1.5,
+            }}
+        >
+            <dt className="text-slate-600 dark:text-slate-300 font-medium select-none">{term}</dt>
+            <dd className="text-slate-900 dark:text-slate-100">{children}</dd>
+        </div>
+    );
+});
 
 /** 状态映射 */
 const STATUS_MAP = {
@@ -87,24 +88,27 @@ const STATUS_MAP = {
     rejected: { label: "Rejected", color: "danger", variant: "subtle" },
 };
 
-export default function AbstractMetaCard({
-    className = "",
-    title,
-    pmid,
-    journal,
-    year,
-    doi = null,
-    authors = [],
-    meta = {},
-    extraTags = [],
-    status,
-    statusBadge,
-    highlight = [],
-    loading = false,
-    onStar = null,
-    onShare = null,
-    onHistory = null,
-}) {
+function AbstractMetaCardImpl(
+    {
+        className = "",
+        title,
+        pmid,
+        journal,
+        year,
+        doi = null,
+        authors = [],
+        meta = {},
+        extraTags = [],
+        status,
+        statusBadge,
+        highlight = [],
+        loading = false,
+        onStar = null,
+        onShare = null,
+        onHistory = null,
+    },
+    ref
+) {
     const [showAllAuthors, setShowAllAuthors] = useState(false);
 
     const formattedTime = useMemo(() => {
@@ -130,6 +134,7 @@ export default function AbstractMetaCard({
     if (loading) {
         return (
             <section
+                ref={ref}
                 aria-label="Abstract metadata loading"
                 className={clsx(
                     "relative isolate mx-auto my-8 rounded-2xl overflow-hidden",
@@ -158,21 +163,16 @@ export default function AbstractMetaCard({
     /** Card */
     return (
         <section
+            ref={ref}
             aria-label="Abstract metadata"
             className={clsx(
-                // 卡片“自成一体”的容器
                 "relative isolate mx-auto my-8 rounded-[20px] overflow-hidden",
-                // 不透明背景，避免圆角露底
                 "bg-white dark:bg-slate-800",
-                // 统一边框 + 阴影
                 "border border-slate-200 dark:border-slate-700 ring-1 ring-black/5",
                 "shadow-[0_12px_36px_rgba(0,0,0,0.08)] hover:shadow-[0_18px_48px_rgba(0,0,0,0.12)] transition-shadow duration-300",
                 className
             )}
-            // 这里用 inline 样式确保不会被其他文件复写
-            style={{
-                maxWidth: "1080px",
-            }}
+            style={{ maxWidth: "1080px" }}
         >
             {/* 顶部操作按钮 */}
             <div className="absolute top-3 right-3 z-10 flex gap-1.5">
@@ -211,7 +211,7 @@ export default function AbstractMetaCard({
                 )}
             </div>
 
-            {/* 内部内容：用内联 padding，几乎不受外部样式影响 */}
+            {/* 内部内容 */}
             <div style={{ padding: "clamp(22px, 3.2vw, 36px)" }}>
                 {/* 标题 + 标签 */}
                 <div style={{ marginBottom: "18px" }}>
@@ -251,9 +251,7 @@ export default function AbstractMetaCard({
                 {/* 主体两栏：左信息 + 右 meta */}
                 <div
                     className="grid gap-8"
-                    style={{
-                        gridTemplateColumns: "minmax(0, 2fr) minmax(260px, 1fr)",
-                    }}
+                    style={{ gridTemplateColumns: "minmax(0, 2fr) minmax(260px, 1fr)" }}
                 >
                     {/* 左侧信息 */}
                     <dl className="space-y-4">
@@ -332,7 +330,9 @@ export default function AbstractMetaCard({
                                             type="button"
                                             onClick={() => setShowAllAuthors((s) => !s)}
                                             className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline font-medium"
-                                            aria-label={showAllAuthors ? "Show fewer authors" : `Show ${moreCount} more authors`}
+                                            aria-label={
+                                                showAllAuthors ? "Show fewer authors" : `Show ${moreCount} more authors`
+                                            }
                                         >
                                             {showAllAuthors ? "Show less" : `+${moreCount} more`}
                                         </button>
@@ -383,49 +383,36 @@ export default function AbstractMetaCard({
     );
 }
 
-AbstractMetaCard.propTypes = {
-    className: PropTypes.string,
-    title: PropTypes.string.isRequired,
-    pmid: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    journal: PropTypes.string,
-    year: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    doi: PropTypes.string,
-    authors: PropTypes.arrayOf(PropTypes.string),
-    meta: PropTypes.shape({
-        timestamp: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-        model: PropTypes.string,
-        extra: PropTypes.string,
-        quality: PropTypes.string,
-    }),
-    extraTags: PropTypes.arrayOf(
-        PropTypes.shape({
-            label: PropTypes.string.isRequired,
-            variant: PropTypes.string,
-        })
-    ),
-    status: PropTypes.string,
-    statusBadge: PropTypes.string,
-    highlight: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
-    loading: PropTypes.bool,
-    onStar: PropTypes.func,
-    onShare: PropTypes.func,
-    onHistory: PropTypes.func,
-};
+if (process.env.NODE_ENV !== "production") {
+    AbstractMetaCardImpl.propTypes = {
+        className: PropTypes.string,
+        title: PropTypes.string.isRequired,
+        pmid: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+        journal: PropTypes.string,
+        year: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+        doi: PropTypes.string,
+        authors: PropTypes.arrayOf(PropTypes.string),
+        meta: PropTypes.shape({
+            timestamp: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+            model: PropTypes.string,
+            extra: PropTypes.string,
+            quality: PropTypes.string,
+        }),
+        extraTags: PropTypes.arrayOf(
+            PropTypes.shape({
+                label: PropTypes.string.isRequired,
+                variant: PropTypes.string,
+            })
+        ),
+        status: PropTypes.string,
+        statusBadge: PropTypes.string,
+        highlight: PropTypes.oneOfType([PropTypes.string, PropTypes.array]),
+        loading: PropTypes.bool,
+        onStar: PropTypes.func,
+        onShare: PropTypes.func,
+        onHistory: PropTypes.func,
+    };
+}
 
-AbstractMetaCard.defaultProps = {
-    className: "",
-    pmid: "-",
-    journal: "-",
-    year: "-",
-    doi: null,
-    authors: [],
-    meta: {},
-    extraTags: [],
-    status: null,
-    statusBadge: null,
-    highlight: [],
-    loading: false,
-    onStar: null,
-    onShare: null,
-    onHistory: null,
-};
+const AbstractMetaCard = memo(forwardRef(AbstractMetaCardImpl));
+export default AbstractMetaCard;

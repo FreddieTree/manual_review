@@ -4,13 +4,19 @@
 <head>
   <meta charset="utf-8" />
   <title>Biomedical Assertion Review · Bristol NLP Lab</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+
+  <meta name="viewport"
+    content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content" />
   <meta name="description"
     content="Professional platform for manual review of biomedical assertion extractions. Efficient, accessible, and human-in-the-loop." />
   <meta name="keywords" content="biomedical, assertion extraction, manual review, annotation, NLP, Bristol" />
   <meta name="author" content="Bristol NLP Lab" />
+  <meta name="color-scheme" content="light dark" />
   <meta name="theme-color" content="#f0f6ff" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0f1f44" media="(prefers-color-scheme: dark)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="format-detection" content="telephone=no" />
 
   <!-- Open Graph / Social preview -->
   <meta property="og:title" content="Biomedical Assertion Review" />
@@ -18,10 +24,8 @@
     content="Professional platform for manual review of biomedical assertion extractions." />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Bristol NLP Lab" />
-  <!-- Placeholder image; replace with real asset in production -->
   <meta property="og:image" content="/social-preview.png" />
   <meta property="og:image:alt" content="Biomedical assertion review interface" />
-
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Biomedical Assertion Review" />
@@ -34,30 +38,21 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/manifest.webmanifest" />
-  <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
   <!-- Performance / Font loading -->
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <!-- Use font-display=swap via Google API for smooth rendering -->
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
 
-  <!-- Preload critical entry (Vite will replace with actual hashed file in build) -->
-  <!-- Vite automatically injects scripts; these are hints for future extension -->
-  <link rel="preload" href="/src/main.jsx" as="script" />
-
-  <!-- Critical minimal styles to avoid flash -->
+  <!-- Critical minimal styles to reduce FOUC -->
   <style>
     :root {
       color-scheme: light dark;
     }
 
     html {
-      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
-        'Segoe UI', Roboto, Arial, sans-serif;
+      font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
       background: linear-gradient(135deg, #f8fafc 0%, #e3edfa 80%);
-      scroll-behavior: smooth;
       -webkit-font-smoothing: antialiased;
     }
 
@@ -67,45 +62,37 @@
       background: inherit;
     }
 
-    /* reduced motion preference */
+    #root {
+      isolation: isolate;
+    }
+
     @media (prefers-reduced-motion: reduce) {
       * {
         animation: none !important;
         transition: none !important;
       }
     }
-
-    /* low-JS fallback styling for root */
-    #root {
-      isolation: isolate;
-    }
   </style>
 
-  <!-- Safari minimal-ui hint -->
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-
-  <!-- Accessibility: announce if JS is disabled -->
-  <noscript>
-    <style>
-      #no-js-warning {
-        position: fixed;
-        inset: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        background: rgba(255, 250, 250, 0.95);
-        z-index: 9999;
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-      }
-    </style>
-  </noscript>
+  <!-- Theme bootstrap: set data-theme before paint to avoid flash -->
+  <script>
+    (function () {
+      try {
+        const stored = localStorage.getItem("theme");
+        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+        const theme = stored || (prefersDark ? "dark" : "light");
+        document.documentElement.setAttribute("data-theme", theme);
+      } catch { }
+    })();
+  </script>
 </head>
 
 <body>
   <noscript>
-    <div id="no-js-warning" role="alert" aria-live="assertive" aria-label="JavaScript required">
+    <div id="no-js-warning" role="alert" aria-live="assertive" aria-label="JavaScript required"
+      style="position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(255,250,250,0.95);z-index:9999;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
       <div
-        style="max-width:480px; text-align:center; padding:1.5rem; border-radius:1rem; background:#fee2e2; color:#b91c1c; box-shadow:0 20px 60px -10px rgba(0,0,0,0.1);">
+        style="max-width:480px;text-align:center;padding:1.5rem;border-radius:1rem;background:#fee2e2;color:#b91c1c;box-shadow:0 20px 60px -10px rgba(0,0,0,0.1);">
         <strong>JavaScript is required.</strong><br />
         This platform relies on JavaScript to function. Please enable it in your browser settings.
       </div>
@@ -114,21 +101,8 @@
 
   <div id="root"></div>
 
-  <!-- Entry point: Vite will handle module loading -->
-  <script type="module" src="/src/main.jsx" defer></script>
-
-  <!-- Theme toggle sync (optional): respects system preference -->
-  <script>
-    (function () {
-      try {
-        const stored = localStorage.getItem("theme");
-        const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        if (stored === "dark" || (!stored && prefersDark)) {
-          document.documentElement.setAttribute("data-theme", "dark");
-        }
-      } catch { }
-    })();
-  </script>
+  <!-- Vite will handle module graph in dev & replace with hashed assets in prod -->
+  <script type="module" src="/src/main.jsx"></script>
 </body>
 
 </html>

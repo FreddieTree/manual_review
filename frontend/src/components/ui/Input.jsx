@@ -1,51 +1,17 @@
-// src/components/ui/Input.jsx
-import React, { forwardRef, useId } from "react";
+import React, { forwardRef, useId, useRef, useCallback } from "react";
 import PropTypes from "prop-types";
 import clsx from "clsx";
+import { CheckCircleIcon, ExclamationCircleIcon } from "@heroicons/react/24/solid";
 
-// Attempt heroicons; fallback minimal inline SVGs
-let CheckCircleIcon = (props) => (
-    <svg
-        aria-hidden="true"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        {...props}
-    >
-        <path
-            fillRule="evenodd"
-            d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 10-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-            clipRule="evenodd"
-        />
-    </svg>
-);
-let ExclamationCircleIcon = (props) => (
-    <svg
-        aria-hidden="true"
-        viewBox="0 0 20 20"
-        fill="currentColor"
-        {...props}
-    >
-        <path d="M9 2a7 7 0 110 14A7 7 0 019 2zm.75 4a.75.75 0 00-1.5 0v3.5a.75.75 0 001.5 0V6zm0 6a.75.75 0 10-1.5 0 .75.75 0 001.5 0z" />
-    </svg>
-);
-try {
-    // eslint-disable-next-line import/no-extraneous-dependencies
-    const icons = require("@heroicons/react/24/solid");
-    if (icons.CheckCircleIcon) CheckCircleIcon = icons.CheckCircleIcon;
-    if (icons.ExclamationCircleIcon) ExclamationCircleIcon = icons.ExclamationCircleIcon;
-} catch {
-    // silent fallback
-}
-
-const Input = forwardRef(function Input(
+function InputImpl(
     {
         className = "",
         variant = "default", // default / error / success
         size = "md", // sm / md / lg
         startAdornment = null, // semantic prefix
-        endAdornment = null, // semantic suffix
-        prefix = null, // legacy
-        suffix = null, // legacy
+        endAdornment = null,   // semantic suffix
+        prefix = null,         // legacy
+        suffix = null,         // legacy
         clearable = false,
         onClear = () => { },
         loading = false,
@@ -61,8 +27,19 @@ const Input = forwardRef(function Input(
 ) {
     const autoId = useId();
     const inputId = id || `input-${autoId}`;
-    const isError = Boolean(errorMessage);
-    const showSuccess = success && !isError;
+
+    const innerRef = useRef(null);
+    const setRefs = useCallback(
+        (node) => {
+            innerRef.current = node;
+            if (typeof ref === "function") ref(node);
+            else if (ref && typeof ref === "object") ref.current = node;
+        },
+        [ref]
+    );
+
+    const isError = Boolean(errorMessage) || variant === "error";
+    const showSuccess = (success || variant === "success") && !isError;
 
     // Size mappings
     const sizeConfig = {
@@ -74,15 +51,15 @@ const Input = forwardRef(function Input(
 
     // Container classes
     const containerCls = clsx(
-        "relative flex items-center w-full rounded-lg transition-shadow duration-200",
+        "relative flex items-center w-full rounded-xl transition-shadow duration-200",
+        "bg-white dark:bg-slate-800 shadow-sm",
         disabled && "opacity-60 cursor-not-allowed",
         !disabled && "focus-within:ring-2 focus-within:ring-offset-0",
-        !isError
-            ? showSuccess
+        isError
+            ? "ring-1 ring-red-400"
+            : showSuccess
                 ? "ring-1 ring-emerald-400"
                 : "ring-0"
-            : "ring-1 ring-red-400",
-        "bg-white dark:bg-slate-800 shadow-sm"
     );
 
     // Input base
@@ -92,38 +69,38 @@ const Input = forwardRef(function Input(
         height,
         text,
         "disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-slate-700",
-        // ensure no inner border
         "border-none",
         isError ? "text-red-800" : "text-gray-900 dark:text-gray-100"
     );
 
     // Icon area size
-    const iconSizeClass = "w-5 h-5 flex-shrink-0";
+    const iconSize = 20;
 
     // Right-side status icon (error / success)
     const statusIcon = isError ? (
         <ExclamationCircleIcon
             aria-hidden="true"
             className="text-red-500 ml-2"
-            width={20}
-            height={20}
+            width={iconSize}
+            height={iconSize}
         />
     ) : showSuccess ? (
         <CheckCircleIcon
             aria-hidden="true"
             className="text-emerald-500 ml-2"
-            width={20}
-            height={20}
+            width={iconSize}
+            height={iconSize}
         />
     ) : null;
 
     // Clear button shown when applicable
-    const showClear = clearable && !disabled && !loading && value != null && String(value).length > 0;
+    const showClear =
+        clearable && !disabled && !loading && value != null && String(value).length > 0;
 
     return (
         <div className={clsx("flex flex-col w-full", className)}>
             <div className={containerCls}>
-                {/* left adornment / prefix */}
+                {/* left adornment / legacy prefix */}
                 {(startAdornment || prefix) && (
                     <div className="flex items-center pl-3 pr-2 text-gray-500 select-none">
                         {startAdornment || prefix}
@@ -132,9 +109,9 @@ const Input = forwardRef(function Input(
 
                 <input
                     id={inputId}
-                    ref={ref}
+                    ref={setRefs}
                     aria-label={ariaLabel}
-                    aria-invalid={isError ? "true" : undefined}
+                    aria-invalid={isError || undefined}
                     aria-describedby={
                         isError
                             ? `${inputId}-error`
@@ -142,7 +119,7 @@ const Input = forwardRef(function Input(
                                 ? `${inputId}-success`
                                 : undefined
                     }
-                    aria-busy={loading ? "true" : undefined}
+                    aria-busy={loading || undefined}
                     disabled={disabled || loading}
                     className={inputCls}
                     value={value}
@@ -167,6 +144,8 @@ const Input = forwardRef(function Input(
                         onClick={(e) => {
                             e.preventDefault();
                             onClear(e);
+                            // 回焦到输入框，符合 Apple 风格的流畅体验
+                            requestAnimationFrame(() => innerRef.current?.focus());
                         }}
                         className="flex items-center justify-center p-1 mr-1 text-gray-400 hover:text-gray-600 rounded-full focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:ring-2 focus-visible:ring-indigo-400"
                         tabIndex={0}
@@ -217,35 +196,28 @@ const Input = forwardRef(function Input(
             )}
         </div>
     );
-});
+}
 
-Input.propTypes = {
-    variant: PropTypes.oneOf(["default", "error", "success"]),
-    size: PropTypes.oneOf(["sm", "md", "lg"]),
-    startAdornment: PropTypes.node,
-    endAdornment: PropTypes.node,
-    prefix: PropTypes.node,
-    suffix: PropTypes.node,
-    clearable: PropTypes.bool,
-    onClear: PropTypes.func,
-    loading: PropTypes.bool,
-    disabled: PropTypes.bool,
-    errorMessage: PropTypes.string,
-    success: PropTypes.bool,
-    id: PropTypes.string,
-    "aria-label": PropTypes.string,
-    value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-};
+if (process.env.NODE_ENV !== "production") {
+    InputImpl.propTypes = {
+        variant: PropTypes.oneOf(["default", "error", "success"]),
+        size: PropTypes.oneOf(["sm", "md", "lg"]),
+        startAdornment: PropTypes.node,
+        endAdornment: PropTypes.node,
+        prefix: PropTypes.node,
+        suffix: PropTypes.node,
+        clearable: PropTypes.bool,
+        onClear: PropTypes.func,
+        loading: PropTypes.bool,
+        disabled: PropTypes.bool,
+        errorMessage: PropTypes.string,
+        success: PropTypes.bool,
+        id: PropTypes.string,
+        "aria-label": PropTypes.string,
+        value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+        className: PropTypes.string,
+    };
+}
 
-Input.defaultProps = {
-    variant: "default",
-    size: "md",
-    clearable: false,
-    onClear: () => { },
-    loading: false,
-    disabled: false,
-    errorMessage: "",
-    success: false,
-};
-
+const Input = forwardRef(InputImpl);
 export default Input;

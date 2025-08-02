@@ -1,4 +1,3 @@
-// src/components/ui/Select.jsx
 import React, { forwardRef } from "react";
 import PropTypes from "prop-types";
 import clsx from "clsx";
@@ -14,7 +13,7 @@ const sizeMap = {
     lg: "text-lg h-12",
 };
 
-const Select = forwardRef(function Select(
+function SelectImpl(
     {
         className = "",
         variant = "default", // default / error / success
@@ -37,19 +36,18 @@ const Select = forwardRef(function Select(
     },
     ref
 ) {
-    const isInvalid = variant === "error";
+    const isInvalid = variant === "error" || Boolean(errorMessage);
     const describedByIds = [];
-    if (errorMessage) describedByIds.push(id ? `${id}-error` : undefined);
-    if (helpText) describedByIds.push(id ? `${id}-help` : undefined);
+    if (errorMessage && id) describedByIds.push(`${id}-error`);
+    if (helpText && id) describedByIds.push(`${id}-help`);
 
-    // Color/shadow logic (light + dark)
     const baseBg = disabled ? "bg-gray-100 dark:bg-slate-800" : "bg-white dark:bg-slate-900";
     const borderColor =
-        variant === "error"
-            ? "border-red-400 focus:ring-red-300"
+        isInvalid
+            ? "border-red-400 focus-within:ring-red-300"
             : variant === "success"
-                ? "border-emerald-400 focus:ring-emerald-300"
-                : "border border-gray-200 dark:border-slate-700 focus:ring-indigo-300";
+                ? "border-emerald-400 focus-within:ring-emerald-300"
+                : "border border-gray-200 dark:border-slate-700 focus-within:ring-indigo-300";
     const textColor = disabled ? "text-gray-400 dark:text-slate-500" : "text-gray-900 dark:text-gray-100";
 
     return (
@@ -73,13 +71,12 @@ const Select = forwardRef(function Select(
                     disabled={disabled || loading}
                     aria-label={ariaLabel || name}
                     aria-invalid={isInvalid || undefined}
-                    aria-describedby={describedByIds.filter(Boolean).join(" ")}
+                    aria-describedby={describedByIds.filter(Boolean).join(" ") || undefined}
                     value={value}
                     className={clsx(
                         "flex-1 bg-transparent appearance-none outline-none w-full px-3 transition placeholder-gray-400",
                         textColor,
-                        "py-0", // height controlled by container
-                        !value && placeholder ? "text-gray-500" : ""
+                        "py-0" // height controlled by container
                     )}
                     {...props}
                 >
@@ -139,6 +136,7 @@ const Select = forwardRef(function Select(
                         fill="none"
                         stroke="currentColor"
                         strokeWidth="2"
+                        aria-hidden="true"
                     >
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 8l4 4 4-4" />
                     </svg>
@@ -169,45 +167,36 @@ const Select = forwardRef(function Select(
                         <span>{errorMessage}</span>
                     </div>
                 ) : helpText ? (
-                    <div
-                        id={id ? `${id}-help` : undefined}
-                        className="text-xs text-gray-500 dark:text-slate-400"
-                    >
+                    <div id={id ? `${id}-help` : undefined} className="text-xs text-gray-500 dark:text-slate-400">
                         {helpText}
                     </div>
                 ) : null}
             </div>
         </div>
     );
-});
+}
 
-Select.propTypes = {
-    className: PropTypes.string,
-    variant: PropTypes.oneOf(["default", "error", "success"]),
-    size: PropTypes.oneOf(["sm", "md", "lg"]),
-    id: PropTypes.string,
-    name: PropTypes.string,
-    disabled: PropTypes.bool,
-    children: PropTypes.node,
-    errorMessage: PropTypes.string,
-    helpText: PropTypes.string,
-    loading: PropTypes.bool,
-    prefix: PropTypes.node,
-    suffix: PropTypes.node,
-    placeholder: PropTypes.string,
-    clearable: PropTypes.bool,
-    onClear: PropTypes.func,
-    value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
-    "aria-label": PropTypes.string,
-};
+if (process.env.NODE_ENV !== "production") {
+    SelectImpl.propTypes = {
+        className: PropTypes.string,
+        variant: PropTypes.oneOf(["default", "error", "success"]),
+        size: PropTypes.oneOf(["sm", "md", "lg"]),
+        id: PropTypes.string,
+        name: PropTypes.string,
+        disabled: PropTypes.bool,
+        children: PropTypes.node,
+        errorMessage: PropTypes.string,
+        helpText: PropTypes.string,
+        loading: PropTypes.bool,
+        prefix: PropTypes.node,
+        suffix: PropTypes.node,
+        placeholder: PropTypes.string,
+        clearable: PropTypes.bool,
+        onClear: PropTypes.func,
+        value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+        "aria-label": PropTypes.string,
+    };
+}
 
-Select.defaultProps = {
-    variant: "default",
-    size: "md",
-    disabled: false,
-    loading: false,
-    clearable: false,
-    placeholder: "",
-};
-
+const Select = forwardRef(SelectImpl);
 export default Select;

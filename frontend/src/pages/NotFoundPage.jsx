@@ -1,14 +1,16 @@
+import React, { forwardRef, memo } from "react";
 import { Link } from "react-router-dom";
 
-export default function NotFoundPage() {
+function NotFoundPageImpl(_, ref) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[70vh] bg-gradient-to-b from-red-50 via-white to-gray-100">
+    <div
+      ref={ref}
+      className="flex flex-col items-center justify-center min-h-[70vh] bg-gradient-to-b from-red-50 via-white to-gray-100"
+    >
       <div className="text-7xl font-extrabold text-red-400 mb-2 drop-shadow-md animate-pulse">
         404
       </div>
-      <div className="text-2xl font-bold text-gray-800 mb-2">
-        Page Not Found
-      </div>
+      <div className="text-2xl font-bold text-gray-800 mb-2">Page Not Found</div>
       <div className="text-gray-500 mb-8 text-base">
         The page you’re looking for doesn’t exist or has been moved.
       </div>
@@ -24,3 +26,5 @@ export default function NotFoundPage() {
     </div>
   );
 }
+
+export default memo(forwardRef(NotFoundPageImpl));

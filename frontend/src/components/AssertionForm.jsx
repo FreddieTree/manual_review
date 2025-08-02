@@ -1,5 +1,4 @@
-// src/components/AssertionForm.jsx
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, forwardRef, memo } from "react";
 import PropTypes from "prop-types";
 import clsx from "clsx";
 import { isPerfectMatch } from "../utils";
@@ -12,18 +11,27 @@ import { useDebouncedValue } from "../hooks/useDebounce";
 /**
  * AssertionForm — refined, accessible form for proposing/editing assertions.
  */
-export default function AssertionForm({
-  sentence,
-  onAdd,
-  loading = false,
-  initial = null,
-  submitLabel = "Add Assertion",
-  className = "",
-  predicateWhitelist = [],
-  entityTypeWhitelist = [],
-}) {
-  const PREDICATES = useMemo(() => (predicateWhitelist.length ? predicateWhitelist : []), [predicateWhitelist]);
-  const ENTITY_TYPES = useMemo(() => (entityTypeWhitelist.length ? entityTypeWhitelist : []), [entityTypeWhitelist]);
+function AssertionFormImpl(
+  {
+    sentence,
+    onAdd,
+    loading = false,
+    initial = null,
+    submitLabel = "Add Assertion",
+    className = "",
+    predicateWhitelist = [],
+    entityTypeWhitelist = [],
+  },
+  ref
+) {
+  const PREDICATES = useMemo(
+    () => (predicateWhitelist.length ? predicateWhitelist : []),
+    [predicateWhitelist]
+  );
+  const ENTITY_TYPES = useMemo(
+    () => (entityTypeWhitelist.length ? entityTypeWhitelist : []),
+    [entityTypeWhitelist]
+  );
 
   const [form, setForm] = useState({
     subject: "",
@@ -49,36 +57,18 @@ export default function AssertionForm({
     if (!debouncedForm.subject_type) e.subject_type = "Subject type is required.";
     if (!debouncedForm.object_type) e.object_type = "Object type is required.";
 
-    if (
-      debouncedForm.subject &&
-      !isPerfectMatch(sentence, debouncedForm.subject)
-    )
+    if (debouncedForm.subject && !isPerfectMatch(sentence, debouncedForm.subject))
       e.subject_match = "Subject must exactly appear in the sentence.";
-    if (
-      debouncedForm.object &&
-      !isPerfectMatch(sentence, debouncedForm.object)
-    )
+    if (debouncedForm.object && !isPerfectMatch(sentence, debouncedForm.object))
       e.object_match = "Object must exactly appear in the sentence.";
 
-    if (
-      debouncedForm.predicate &&
-      PREDICATES.length &&
-      !PREDICATES.includes(debouncedForm.predicate)
-    )
+    if (debouncedForm.predicate && PREDICATES.length && !PREDICATES.includes(debouncedForm.predicate))
       e.predicate_whitelist = "Predicate not in approved list.";
 
-    if (
-      debouncedForm.subject_type &&
-      ENTITY_TYPES.length &&
-      !ENTITY_TYPES.includes(debouncedForm.subject_type)
-    )
+    if (debouncedForm.subject_type && ENTITY_TYPES.length && !ENTITY_TYPES.includes(debouncedForm.subject_type))
       e.subject_type_whitelist = "Invalid subject type.";
 
-    if (
-      debouncedForm.object_type &&
-      ENTITY_TYPES.length &&
-      !ENTITY_TYPES.includes(debouncedForm.object_type)
-    )
+    if (debouncedForm.object_type && ENTITY_TYPES.length && !ENTITY_TYPES.includes(debouncedForm.object_type))
       e.object_type_whitelist = "Invalid object type.";
 
     return e;
@@ -128,6 +118,7 @@ export default function AssertionForm({
 
   return (
     <form
+      ref={ref}
       onSubmit={handleSubmit}
       aria-label="Assertion creation form"
       className={clsx(
@@ -440,22 +431,18 @@ export default function AssertionForm({
   );
 }
 
-AssertionForm.propTypes = {
-  sentence: PropTypes.string.isRequired,
-  onAdd: PropTypes.func.isRequired,
-  loading: PropTypes.bool,
-  initial: PropTypes.object,
-  submitLabel: PropTypes.string,
-  className: PropTypes.string,
-  predicateWhitelist: PropTypes.arrayOf(PropTypes.string),
-  entityTypeWhitelist: PropTypes.arrayOf(PropTypes.string),
-};
+if (process.env.NODE_ENV !== "production") {
+  AssertionFormImpl.propTypes = {
+    sentence: PropTypes.string.isRequired,
+    onAdd: PropTypes.func.isRequired,
+    loading: PropTypes.bool,
+    initial: PropTypes.object,
+    submitLabel: PropTypes.string,
+    className: PropTypes.string,
+    predicateWhitelist: PropTypes.arrayOf(PropTypes.string),
+    entityTypeWhitelist: PropTypes.arrayOf(PropTypes.string),
+  };
+}
 
-AssertionForm.defaultProps = {
-  loading: false,
-  initial: null,
-  submitLabel: "Add Assertion",
-  className: "",
-  predicateWhitelist: [],
-  entityTypeWhitelist: [],
-};
+const AssertionForm = memo(forwardRef(AssertionFormImpl));
+export default AssertionForm;

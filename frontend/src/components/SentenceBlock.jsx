@@ -1,5 +1,4 @@
-// src/components/SentenceBlock.jsx
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, { useState, useEffect, useMemo, useCallback, forwardRef, memo } from "react";
 import PropTypes from "prop-types";
 import clsx from "clsx";
 
@@ -20,21 +19,12 @@ import {
 /**
  * SentenceBlock
  */
-export default function SentenceBlock({
-  sentenceObj,
-  onAddAssertion,
-  onModifyAssertion,
-  onDeleteAssertion,
-  reviewState = {},
-  onReviewChange,
-}) {
-  const {
-    sentence_index: sentenceIndex,
-    sentence,
-    assertions = [],
-  } = sentenceObj;
+function SentenceBlockImpl(
+  { sentenceObj, onAddAssertion, onModifyAssertion, onDeleteAssertion, reviewState = {}, onReviewChange },
+  ref
+) {
+  const { sentence_index: sentenceIndex, sentence, assertions = [] } = sentenceObj;
 
-  // Local reviews mirror; keep in sync when props change
   const [localReviews, setLocalReviews] = useState(() =>
     assertions.map((_, i) => reviewState[i] || { decision: "accept", comment: "", isModified: false })
   );
@@ -45,7 +35,6 @@ export default function SentenceBlock({
     );
   }, [assertions.length, reviewState]);
 
-  // Derive overall decision
   const overallDecision = useMemo(() => {
     const existingReviews = localReviews.map((r) => ({
       review: r.decision,
@@ -55,7 +44,6 @@ export default function SentenceBlock({
     return deriveOverallDecision({ existingReviews, addedAssertions });
   }, [localReviews, assertions]);
 
-  // Update helpers
   const updateReview = useCallback(
     (assertIdx, patch) => {
       setLocalReviews((prev) => {
@@ -75,11 +63,13 @@ export default function SentenceBlock({
   const handleCommentChange = (i, value) => updateReview(i, { comment: value });
   const markModified = (i) => updateReview(i, { isModified: true, decision: "modify" });
 
-  // ids for accessibility
   const getId = (type, i) => `sentence-${sentenceIndex}-assertion-${i}-${type}`;
 
   return (
-    <div className="relative bg-white dark:bg-[#1f2937] rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-6">
+    <div
+      ref={ref}
+      className="relative bg-white dark:bg-[#1f2937] rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-6"
+    >
       {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start gap-4">
         <div className="flex gap-4 flex-1 flex-wrap">
@@ -160,9 +150,7 @@ export default function SentenceBlock({
                     {!subjectMatch && (
                       <div className="text-[11px] text-red-600">Subject not found exactly in sentence</div>
                     )}
-                    {!subjectTypeValid && (
-                      <div className="text-[11px] text-red-600">Invalid subject type</div>
-                    )}
+                    {!subjectTypeValid && <div className="text-[11px] text-red-600">Invalid subject type</div>}
                   </div>
                 </div>
 
@@ -209,9 +197,7 @@ export default function SentenceBlock({
                     {!objectMatch && (
                       <div className="text-[11px] text-red-600">Object not found exactly in sentence</div>
                     )}
-                    {!objectTypeValid && (
-                      <div className="text-[11px] text-red-600">Invalid object type</div>
-                    )}
+                    {!objectTypeValid && <div className="text-[11px] text-red-600">Invalid object type</div>}
                   </div>
                 </div>
               </div>
@@ -219,7 +205,10 @@ export default function SentenceBlock({
               {/* Right: review controls */}
               <div className="flex-shrink-0 flex flex-col gap-3 w-full sm:w-auto min-w-[220px]">
                 <div className="flex flex-col">
-                  <label htmlFor={getId("decision", i)} className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor={getId("decision", i)}
+                    className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1"
+                  >
                     Decision
                   </label>
                   <Select
@@ -236,7 +225,10 @@ export default function SentenceBlock({
                   </Select>
                 </div>
                 <div className="flex flex-col">
-                  <label htmlFor={getId("comment", i)} className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1">
+                  <label
+                    htmlFor={getId("comment", i)}
+                    className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 mb-1"
+                  >
                     Reviewer note
                   </label>
                   <Input
@@ -296,23 +288,20 @@ export default function SentenceBlock({
   );
 }
 
-SentenceBlock.propTypes = {
-  sentenceObj: PropTypes.shape({
-    sentence_index: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
-    sentence: PropTypes.string.isRequired,
-    assertions: PropTypes.arrayOf(PropTypes.object),
-  }).isRequired,
-  onAddAssertion: PropTypes.func,
-  onModifyAssertion: PropTypes.func,
-  onDeleteAssertion: PropTypes.func,
-  reviewState: PropTypes.object,
-  onReviewChange: PropTypes.func,
-};
+if (process.env.NODE_ENV !== "production") {
+  SentenceBlockImpl.propTypes = {
+    sentenceObj: PropTypes.shape({
+      sentence_index: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+      sentence: PropTypes.string.isRequired,
+      assertions: PropTypes.arrayOf(PropTypes.object),
+    }).isRequired,
+    onAddAssertion: PropTypes.func,
+    onModifyAssertion: PropTypes.func,
+    onDeleteAssertion: PropTypes.func,
+    reviewState: PropTypes.object,
+    onReviewChange: PropTypes.func,
+  };
+}
 
-SentenceBlock.defaultProps = {
-  onAddAssertion: null,
-  onModifyAssertion: null,
-  onDeleteAssertion: null,
-  reviewState: {},
-  onReviewChange: null,
-};
+const SentenceBlock = memo(forwardRef(SentenceBlockImpl));
+export default SentenceBlock;

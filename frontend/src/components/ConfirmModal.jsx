@@ -1,68 +1,95 @@
 // src/components/ConfirmModal.jsx
-import React, { useEffect, useRef, useCallback, useId, useState } from "react";
+import React, { useEffect, useRef, useCallback, useId, useState, forwardRef, memo } from "react";
 import PropTypes from "prop-types";
 import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { XMarkIcon } from "@heroicons/react/24/solid";
 
-/**
- * ConfirmModal with focus trap, accessible labels, backdrop click to dismiss,
- * smooth animations, and optional loading state.
- */
-export default function ConfirmModal({
-    open,
-    title,
-    description,
-    confirmText = "Confirm",
-    cancelText = "Cancel",
-    onConfirm,
-    onCancel,
-    intent = "danger", // danger / primary / secondary
-    isLoading = false,
-    disableEscape = false,
-    returnFocusRef = null, // element to restore focus to
-}) {
+/** ===== scroll lock with ref-count ===== */
+let __lockCount = 0;
+let __prevOverflow = "";
+function lockScroll() {
+    if (typeof document === "undefined") return;
+    if (__lockCount === 0) {
+        __prevOverflow = document.body.style.overflow || "";
+        document.body.style.overflow = "hidden";
+    }
+    __lockCount++;
+}
+function unlockScroll() {
+    if (typeof document === "undefined") return;
+    __lockCount = Math.max(0, __lockCount - 1);
+    if (__lockCount === 0) {
+        document.body.style.overflow = __prevOverflow || "";
+    }
+}
+
+function ConfirmModalImpl(
+    {
+        open,
+        title,
+        description = "",
+        confirmText = "Confirm",
+        cancelText = "Cancel",
+        onConfirm,
+        onCancel,
+        intent = "danger", // danger / primary / secondary
+        isLoading = false,
+        disableEscape = false,
+        closeOnBackdrop = true,
+        returnFocusRef = null, // element to restore focus to
+        portalContainer, // default: document.body
+        role = "alertdialog",
+        className = "",
+        initialFocusSelector, // e.g. '#confirm-btn'
+    },
+    ref
+) {
     const dialogId = useId();
     const titleId = `${dialogId}-title`;
     const descId = `${dialogId}-desc`;
-    const modalRef = useRef(null);
-    const lastFocusedRef = useRef(null);
 
+    const innerRef = useRef(null);
+    const modalRef = /** @type {React.MutableRefObject<HTMLDivElement|null>} */ (ref) ?? innerRef;
+    const lastFocusedRef = useRef(null);
     const [mounted, setMounted] = useState(false);
 
-    // manage mounting to avoid server mismatch if SSR ever
-    useEffect(() => {
-        setMounted(true);
-    }, []);
+    // SSR 安全：挂载后再 createPortal
+    useEffect(() => setMounted(true), []);
 
-    // Save and restore focus
+    // Save & restore focus + lock scroll
     useEffect(() => {
+        if (!mounted) return;
         if (open) {
+            lockScroll();
             lastFocusedRef.current = document.activeElement;
-            // delay to allow animation
-            setTimeout(() => {
-                // focus first focusable within modal
-                const first = modalRef.current?.querySelector(
-                    'button:not([disabled]), [tabindex]:not([tabindex="-1"])'
-                );
-                first?.focus();
+            // 延时确保节点已渲染
+            const t = setTimeout(() => {
+                const root = modalRef.current;
+                if (!root) return;
+                let first =
+                    (initialFocusSelector && root.querySelector(initialFocusSelector)) ||
+                    root.querySelector(
+                        'button:not([disabled]), [tabindex]:not([tabindex="-1"]), input:not([disabled])'
+                    );
+                (first ?? root).focus();
             }, 10);
-            // trap scroll behind
-            document.body.style.overflow = "hidden";
+            return () => clearTimeout(t);
         } else {
-            document.body.style.overflow = "";
+            // 释放滚动与焦点
+            unlockScroll();
             if (returnFocusRef?.current) {
-                returnFocusRef.current.focus();
-            } else if (lastFocusedRef.current) {
-                lastFocusedRef.current.focus();
+                returnFocusRef.current.focus?.();
+            } else if (lastFocusedRef.current && /** @type{HTMLElement}*/ (lastFocusedRef.current).focus) {
+        /** @type{HTMLElement}*/ (lastFocusedRef.current).focus();
             }
         }
         return () => {
-            document.body.style.overflow = "";
+            unlockScroll();
         };
-    }, [open, returnFocusRef]);
+    }, [open, mounted, returnFocusRef, modalRef, initialFocusSelector]);
 
-    // Key handling: Escape / Enter
+    // Key handling: Escape / Enter，仅在 open 时监听
     const handleKey = useCallback(
         (e) => {
             if (!open) return;
@@ -70,7 +97,6 @@ export default function ConfirmModal({
                 e.preventDefault();
                 onCancel?.();
             } else if (e.key === "Enter" && !isLoading) {
-                // if focus is inside modal and Enter pressed, trigger confirm if appropriate
                 const active = document.activeElement;
                 if (modalRef.current?.contains(active)) {
                     e.preventDefault();
@@ -78,39 +104,44 @@ export default function ConfirmModal({
                 }
             }
         },
-        [open, onCancel, onConfirm, isLoading, disableEscape]
+        [open, onCancel, onConfirm, isLoading, disableEscape, modalRef]
     );
 
     useEffect(() => {
+        if (!open) return;
         document.addEventListener("keydown", handleKey);
         return () => document.removeEventListener("keydown", handleKey);
-    }, [handleKey]);
+    }, [open, handleKey]);
 
-    // Focus trap (simple)
-    const handleTab = useCallback((e) => {
-        if (e.key !== "Tab") return;
-        const focusable = modalRef.current
-            ? Array.from(
-                modalRef.current.querySelectorAll(
-                    'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-                )
-            ).filter((el) => el.offsetParent !== null)
-            : [];
-        if (focusable.length === 0) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey) {
-            if (document.activeElement === first) {
-                e.preventDefault();
-                last.focus();
+    // Focus trap with sentinels
+    const handleTab = useCallback(
+        (e) => {
+            if (e.key !== "Tab") return;
+            const root = modalRef.current;
+            const focusable = root
+                ? Array.from(
+                    root.querySelectorAll(
+                        'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+                    )
+                ).filter((el) => el instanceof HTMLElement && !el.hasAttribute("disabled") && el.offsetParent !== null)
+                : [];
+            if (focusable.length === 0) return;
+            const first = /** @type{HTMLElement} */ (focusable[0]);
+            const last = /** @type{HTMLElement} */ (focusable[focusable.length - 1]);
+            if (e.shiftKey) {
+                if (document.activeElement === first) {
+                    e.preventDefault();
+                    last.focus();
+                }
+            } else {
+                if (document.activeElement === last) {
+                    e.preventDefault();
+                    first.focus();
+                }
             }
-        } else {
-            if (document.activeElement === last) {
-                e.preventDefault();
-                first.focus();
-            }
-        }
-    }, []);
+        },
+        [modalRef]
+    );
 
     useEffect(() => {
         if (!open) return;
@@ -122,27 +153,31 @@ export default function ConfirmModal({
         return () => node?.removeEventListener("keydown", onKeyDown);
     }, [open, handleTab]);
 
-    // click outside to dismiss
     const handleBackdropClick = (e) => {
+        if (!closeOnBackdrop) return;
         if (e.target === e.currentTarget) {
             onCancel?.();
         }
     };
 
-    if (!mounted) return null;
-    if (!open) return null;
+    if (!mounted || !open) return null;
+
+    const container = portalContainer ?? (typeof document !== "undefined" ? document.body : null);
+    if (!container) return null;
 
     return createPortal(
         <div
             aria-modal="true"
-            role="alertdialog"
+            role={role}
             aria-labelledby={titleId}
-            aria-describedby={descId}
-            className="fixed inset-0 z-50 flex items-center justify-center px-4 sm:px-6"
+            {...(description ? { "aria-describedby": descId } : {})}
+            className={clsx("fixed inset-0 z-50 flex items-center justify-center px-4 sm:px-6", className)}
+            data-state="open"
         >
             {/* Backdrop */}
             <div
                 aria-hidden="true"
+                role="presentation"  // ★ 加上，便于测试用 getByRole('presentation')
                 className="fixed inset-0 bg-black/30 backdrop-blur-sm transition-opacity"
                 onClick={handleBackdropClick}
             />
@@ -155,10 +190,14 @@ export default function ConfirmModal({
                     "scale-95 opacity-0 animate-enter"
                 )}
                 style={{ animationFillMode: "forwards" }}
+                aria-busy={isLoading ? "true" : "false"}
             >
+                {/* focus sentinels */}
+                <span tabIndex={0} aria-hidden="true" className="absolute top-0 left-0 w-px h-px opacity-0" />
                 {/* close button */}
                 <div className="absolute top-3 right-3">
                     <button
+                        id={`${dialogId}-close`}
                         aria-label="Close"
                         onClick={onCancel}
                         className="p-2 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700 transition"
@@ -171,18 +210,14 @@ export default function ConfirmModal({
                 <div className="p-6 flex flex-col gap-4">
                     <div className="flex items-start gap-3">
                         <div className="flex-1">
-                            <h2
-                                id={titleId}
-                                className="text-lg font-semibold text-gray-900 dark:text-gray-100"
-                            >
+                            <h2 id={titleId} className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                                 {title}
                             </h2>
-                            <p
-                                id={descId}
-                                className="mt-1 text-sm text-gray-600 dark:text-gray-300"
-                            >
-                                {description}
-                            </p>
+                            {description && (
+                                <p id={descId} className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                                    {description}
+                                </p>
+                            )}
                         </div>
                     </div>
 
@@ -196,6 +231,7 @@ export default function ConfirmModal({
                             {cancelText}
                         </button>
                         <button
+                            id={`${dialogId}-confirm`}
                             onClick={onConfirm}
                             disabled={isLoading}
                             className={clsx(
@@ -215,45 +251,44 @@ export default function ConfirmModal({
                         </button>
                     </div>
                 </div>
+                <span tabIndex={0} aria-hidden="true" className="absolute bottom-0 left-0 w-px h-px opacity-0" />
             </div>
 
-            {/* Inline styles for animation (could be moved to CSS) */}
+            {/* Inline animation (or move to CSS) */}
             <style>{`
         @keyframes enter {
           from { opacity: 0; transform: scale(0.96); }
-          to { opacity: 1; transform: scale(1); }
+          to   { opacity: 1; transform: scale(1); }
         }
-        .animate-enter {
-          animation: enter 220ms cubic-bezier(0.22, 0.08, 0.15, 1) forwards;
-        }
+        .animate-enter { animation: enter 220ms cubic-bezier(0.22, 0.08, 0.15, 1) forwards; }
       `}</style>
         </div>,
-        document.body
+        container
     );
 }
 
-ConfirmModal.propTypes = {
-    open: PropTypes.bool.isRequired,
-    title: PropTypes.string.isRequired,
-    description: PropTypes.string,
-    confirmText: PropTypes.string,
-    cancelText: PropTypes.string,
-    onConfirm: PropTypes.func,
-    onCancel: PropTypes.func,
-    intent: PropTypes.oneOf(["danger", "primary", "secondary"]),
-    isLoading: PropTypes.bool,
-    disableEscape: PropTypes.bool,
-    returnFocusRef: PropTypes.shape({ current: PropTypes.any }),
-};
+// === 正确：把 propTypes 挂在外层组件上，避免 forwardRef 警告 ===
+const ConfirmModal = memo(forwardRef(ConfirmModalImpl));
 
-ConfirmModal.defaultProps = {
-    description: "",
-    confirmText: "Confirm",
-    cancelText: "Cancel",
-    onConfirm: () => { },
-    onCancel: () => { },
-    intent: "danger",
-    isLoading: false,
-    disableEscape: false,
-    returnFocusRef: null,
-};
+if (process.env.NODE_ENV !== "production") {
+    ConfirmModal.propTypes = {
+        open: PropTypes.bool.isRequired,
+        title: PropTypes.string.isRequired,
+        description: PropTypes.string,
+        confirmText: PropTypes.string,
+        cancelText: PropTypes.string,
+        onConfirm: PropTypes.func,
+        onCancel: PropTypes.func,
+        intent: PropTypes.oneOf(["danger", "primary", "secondary"]),
+        isLoading: PropTypes.bool,
+        disableEscape: PropTypes.bool,
+        closeOnBackdrop: PropTypes.bool,
+        returnFocusRef: PropTypes.shape({ current: PropTypes.any }),
+        portalContainer: PropTypes.any,
+        role: PropTypes.oneOf(["dialog", "alertdialog"]),
+        className: PropTypes.string,
+        initialFocusSelector: PropTypes.string,
+    };
+}
+
+export default ConfirmModal;
