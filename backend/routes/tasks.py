@@ -1,15 +1,18 @@
-# routes/task.py
+# backend/routes/tasks.py
+from __future__ import annotations
 
 import time
 import logging
 from functools import wraps
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
-from flask import Blueprint, request, session, jsonify, current_app
+from flask import Blueprint, request, session, jsonify
 
-from task_manager import assign_abstract_to_reviewer, release_expired_locks, release_assignment
-from models import get_abstract_by_id, log_review_action, get_stats_for_reviewer
-from reviewer_utils import audit_review_submission
+from ..services.assignment import assign_abstract_to_reviewer, release_expired_locks
+from ..models.abstracts import get_abstract_by_id
+from ..models.logs import log_review_action
+from ..services.stats import get_stats_for_reviewer   # <-- 改为服务层
+from ..services.audit import audit_review_submission
 
 task_api = Blueprint("task_api", __name__, url_prefix="/api")
 
@@ -20,10 +23,7 @@ if not logger.handlers:
     logger.addHandler(handler)
 logger.setLevel(logging.INFO)
 
-
-# --- Response helpers -------------------------------------------------------
-
-def success_response(data: Any = None, message: Optional[str] = None):
+def success_response(data: Any = None, message: Optional[str] = None) -> Tuple[Any, int]:
     payload: Dict[str, Any] = {"success": True}
     if data is not None:
         payload["data"] = data
@@ -31,15 +31,18 @@ def success_response(data: Any = None, message: Optional[str] = None):
         payload["message"] = message
     return jsonify(payload), 200
 
-
-def error_response(message: str, status: int = 400, error_code: Optional[str] = None):
+def error_response(
+    message: str,
+    status: int = 400,
+    error_code: Optional[str] = None,
+    data: Optional[Dict[str, Any]] = None,
+) -> Tuple[Any, int]:
     payload: Dict[str, Any] = {"success": False, "message": message}
     if error_code:
         payload["error_code"] = error_code
+    if data is not None:
+        payload["data"] = data
     return jsonify(payload), status
-
-
-# --- Authentication / session guard ---------------------------------------
 
 def require_login(f):
     @wraps(f)
@@ -49,72 +52,44 @@ def require_login(f):
         return f(*args, **kwargs)
     return wrapper
 
-
-# --- Routes ---------------------------------------------------------------
-
 @task_api.route("/assigned_abstract", methods=["GET"])
 @require_login
 def api_assigned_abstract():
-    """
-    Get or refresh assigned abstract for current reviewer.
-    Returns:
-      - abstract payload
-      - assigned_pmid
-      - optionally lock holders / reviewer stats
-    """
     email = session.get("email")
     name = session.get("name", "")
     if not email:
         return error_response("Missing session email", status=401)
 
     try:
-        # Clean stale locks first
         release_expired_locks()
-
-        # Assign or refresh
         pmid = assign_abstract_to_reviewer(email, name)
         if not pmid:
             return success_response({"no_more_tasks": True}, message="No available abstracts to assign.")
 
         session["current_abs_id"] = pmid
-
         abstract = get_abstract_by_id(pmid)
         if not abstract:
             return error_response(f"Assigned abstract {pmid} not found", status=404, error_code="abstract_not_found")
 
-        # Optional: include reviewer stats and current lock holders
-        stats = {}
+        stats: Dict[str, Any] = {}
         try:
             stats = get_stats_for_reviewer(email)
         except Exception:
             logger.debug("Failed to fetch reviewer stats for %s", email)
 
-        # build payload
-        payload = {
-            "abstract": abstract,
-            "assigned_pmid": pmid,
-            "reviewer_stats": stats,
-        }
-
+        payload = {"abstract": abstract, "assigned_pmid": pmid, "reviewer_stats": stats}
         return success_response(payload)
     except Exception as e:
         logger.exception("Error in assigned_abstract for %s", email)
         return error_response(f"Failed to assign abstract: {e}", status=500, error_code="assignment_error")
 
-
 @task_api.route("/submit_review", methods=["POST"])
 @require_login
 def api_submit_review():
     """
-    Accept review submission and persist atomic logs.
-
-    Expected JSON structure:
-    {
-      pmid: optional string (falls back to session.current_abs_id),
-      sentence_results: optional [...],  # usually provided for latest state
-      review_states: optional structured decisions,
-      form_data: optional legacy flat form field map
-    }
+    接收审核提交，调用 services.audit：
+      - 成功：写入 logs，返回 {success, logs_written, violations(如有)}
+      - 校验失败：返回 {success: false, error_code: "validation_failed", data: {violations}}
     """
     email = session.get("email")
     name = session.get("name", "")
@@ -134,22 +109,34 @@ def api_submit_review():
     sentence_results = payload.get("sentence_results", abstract.get("sentence_results", []))
     review_states = payload.get("review_states", {}) or {}
     form_data = payload.get("form_data", {}) or {}
-
     reviewer_info = {"email": email, "name": name}
 
     try:
-        logs = audit_review_submission(
+        result = audit_review_submission(
             abs_id=pmid,
             sentence_results=sentence_results,
             post_data=form_data,
             reviewer_info=reviewer_info,
             review_states=review_states,
         )
-        if not isinstance(logs, list):
-            logger.warning("audit_review_submission returned non-list for %s", email)
-            return error_response("Invalid audit output", status=500, error_code="audit_malformed")
 
-        # Persist logs
+        if isinstance(result, dict):
+            logs = result.get("logs", [])
+            violations = result.get("violations", [])
+            can_commit = bool(result.get("can_commit", True))
+        else:
+            logs = list(result)
+            violations = []
+            can_commit = True
+
+        if not can_commit:
+            return error_response(
+                "Submission has validation errors; please resolve and resubmit.",
+                status=400,
+                error_code="validation_failed",
+                data={"violations": violations},
+            )
+
         written = 0
         for log in logs:
             try:
@@ -158,17 +145,15 @@ def api_submit_review():
             except Exception as e:
                 logger.error("Failed to write individual log: %s", e)
 
-        # Release current assignment to allow next fetch
         session.pop("current_abs_id", None)
         release_expired_locks()
 
-        return success_response(
-            {
-                "message": "Review submitted",
-                "logs_written": written,
-                "submitted_at": time.time(),
-            }
-        )
+        return success_response({
+            "message": "Review submitted",
+            "logs_written": written,
+            "submitted_at": time.time(),
+            "violations": violations,
+        })
     except Exception as e:
         logger.exception("Audit or persistence failure for reviewer %s on %s", email, pmid)
         return error_response(f"Audit failed: {e}", status=500, error_code="audit_error")
