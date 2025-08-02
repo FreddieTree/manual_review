@@ -1,0 +1,140 @@
+.
+├── .DS_Store
+├── .gitignore
+├── .ipynb_checkpoints
+│   ├── app-checkpoint.py
+│   ├── config-checkpoint.py
+│   ├── models-checkpoint.py
+│   ├── README-checkpoint.md
+│   ├── requirements-checkpoint.txt
+│   ├── task_manager-checkpoint.py
+│   └── utils-checkpoint.py
+├── .vscode
+│   └── settings.json
+├── aggregate.py
+├── app.py
+├── arbitration.py
+├── assertion_utils.py
+├── bfg.jar
+├── config.py
+├── data
+│   ├── exports
+│   ├── review_logs.jsonl
+│   ├── reviewers.json
+│   └── sentence_level_gpt4.1.jsonl
+├── environment.yml
+├── export.py
+├── frontend
+│   ├── .DS_Store
+│   ├── .gitignore
+│   ├── .ipynb_checkpoints
+│   ├── eslint.config.js
+│   ├── index.html
+│   ├── package-lock.json
+│   ├── package.json
+│   ├── postcss.config.mjs
+│   ├── public
+│   ├── README.md
+│   ├── scipts
+│   │   └── generate-css-variables.js
+│   ├── src
+│   │   ├── .DS_Store
+│   │   ├── .ipynb_checkpoints
+│   │   │   ├── api-checkpoint.js
+│   │   │   ├── App-checkpoint.jsx
+│   │   │   ├── index-checkpoint.css
+│   │   │   ├── index-checkpoint.js
+│   │   │   └── main-checkpoint.jsx
+│   │   ├── api
+│   │   │   └── index.js
+│   │   ├── api.js
+│   │   ├── App.css
+│   │   ├── App.jsx
+│   │   ├── assets
+│   │   │   └── react.svg
+│   │   ├── components
+│   │   │   ├── .ipynb_checkpoints
+│   │   │   │   ├── AddAssertionForm-checkpoint.jsx
+│   │   │   │   ├── AssertionTable-checkpoint.jsx
+│   │   │   │   ├── Footer-checkpoint.jsx
+│   │   │   │   ├── Header-checkpoint.jsx
+│   │   │   │   └── SentenceBlock-checkpoint.jsx
+│   │   │   ├── AbstractMetaCard.jsx
+│   │   │   ├── AssertionEditor.jsx
+│   │   │   ├── AssertionForm.jsx
+│   │   │   ├── AssertionSummaryPanel.jsx
+│   │   │   ├── ConfirmModal.jsx
+│   │   │   ├── DecisionBadge.jsx
+│   │   │   ├── ErrorBoundary.jsx
+│   │   │   ├── PricingDisplay.jsx
+│   │   │   ├── SentenceBlock.jsx
+│   │   │   ├── ThemeSwitcher.jsx
+│   │   │   ├── TopBar.jsx
+│   │   │   └── ui
+│   │   │       ├── Badge.jsx
+│   │   │       ├── Button.jsx
+│   │   │       ├── CopyButton.jsx
+│   │   │       ├── Input.jsx
+│   │   │       ├── Loader.jsx
+│   │   │       ├── Select.jsx
+│   │   │       └── Tooltip.jsx
+│   │   ├── design-tokens.js
+│   │   ├── hooks
+│   │   │   ├── useDebounce.js
+│   │   │   ├── usePricing.js
+│   │   │   ├── useScrollRestoration.js
+│   │   │   ├── useTheme.js
+│   │   │   └── useUser.js
+│   │   ├── index.css
+│   │   ├── main.jsx
+│   │   ├── pages
+│   │   │   ├── .ipynb_checkpoints
+│   │   │   │   ├── AdminPage-checkpoint.jsx
+│   │   │   │   ├── LoginPage-checkpoint.jsx
+│   │   │   │   ├── NoTaskPage-checkpoint.jsx
+│   │   │   │   ├── NotFoundPage-checkpoint.jsx
+│   │   │   │   └── ReviewPage-checkpoint.jsx
+│   │   │   ├── AdminPage.jsx
+│   │   │   ├── ArbitrationPage.jsx
+│   │   │   ├── LoginPage.jsx
+│   │   │   ├── NoTasksPage.jsx
+│   │   │   ├── NotFoundPage.jsx
+│   │   │   ├── ReviewerAdminPage.jsx
+│   │   │   ├── ReviewersPage.jsx
+│   │   │   └── ReviewPage.jsx
+│   │   └── utils.js
+│   ├── tailwind.config.mjs
+│   └── vite.config.js
+├── Miniconda3-latest-MacOSX-x86_64.sh
+├── models.py
+├── project_structure.txt
+├── README.md
+├── requirements.txt
+├── reviewer_utils.py
+├── reviewer.py
+├── routes
+│   ├── __init__.py
+│   ├── admin.py
+│   ├── arbitration.py
+│   ├── auth.py
+│   ├── export.py
+│   ├── reviewer.py
+│   └── task.py
+├── task_manager.py
+├── templates
+│   ├── .ipynb_checkpoints
+│   │   ├── admin-checkpoint.html
+│   │   ├── base-checkpoint.html
+│   │   ├── login-checkpoint.html
+│   │   ├── no_more_task-checkpoint.html
+│   │   └── review-checkpoint.html
+│   ├── 404.html
+│   ├── admin.html
+│   ├── base.html
+│   ├── login.html
+│   ├── no_more_tasks.html
+│   ├── review.html
+│   └── stats.html
+└── utils.py
+
+22 directories, 116 files

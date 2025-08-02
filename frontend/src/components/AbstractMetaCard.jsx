@@ -4,7 +4,6 @@ import clsx from "clsx";
 import PropTypes from "prop-types";
 import Badge from "./ui/Badge";
 import Tooltip from "./ui/Tooltip";
-import CopyButton from "./ui/CopyButton";
 import {
     ArrowTopRightOnSquareIcon,
     StarIcon,
@@ -12,51 +11,43 @@ import {
     ClockIcon,
 } from "@heroicons/react/24/outline";
 
-/** Stable highlighter: splits text and wraps matched queries, case-insensitive. */
+/** 安全高亮 */
 function Highlighter({ text = "", queries = [] }) {
-    const normalizedQueries = useMemo(() => {
+    const normalized = useMemo(() => {
         if (!queries) return [];
-        if (Array.isArray(queries)) return queries.filter(Boolean).map(q => q.trim()).filter(Boolean);
+        if (Array.isArray(queries)) return queries.filter(Boolean).map((q) => q.trim()).filter(Boolean);
         if (typeof queries === "string" && queries.trim()) return [queries.trim()];
         return [];
     }, [queries]);
 
     const parts = useMemo(() => {
-        if (!text || normalizedQueries.length === 0) return [{ text, match: false }];
-
-        // Build regex safely
-        const escaped = normalizedQueries.map(q => q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+        if (!text || normalized.length === 0) return [{ text, match: false }];
+        const escaped = normalized.map((q) => q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
         const regex = new RegExp(`(${escaped.join("|")})`, "gi");
 
-        const result = [];
-        let lastIndex = 0;
-        let match;
-        while ((match = regex.exec(text)) !== null) {
-            const matchText = match[0];
-            const index = match.index;
-            if (index > lastIndex) {
-                result.push({ text: text.slice(lastIndex, index), match: false });
-            }
-            result.push({ text: matchText, match: true });
-            lastIndex = index + matchText.length;
-            // prevent infinite loops for zero-length matches
-            if (regex.lastIndex === match.index) regex.lastIndex++;
+        const out = [];
+        let last = 0;
+        let m;
+        while ((m = regex.exec(text)) !== null) {
+            const idx = m.index;
+            const seg = m[0];
+            if (idx > last) out.push({ text: text.slice(last, idx), match: false });
+            out.push({ text: seg, match: true });
+            last = idx + seg.length;
+            if (regex.lastIndex === m.index) regex.lastIndex++;
         }
-        if (lastIndex < text.length) {
-            result.push({ text: text.slice(lastIndex), match: false });
-        }
-        return result;
-    }, [text, normalizedQueries]);
+        if (last < text.length) out.push({ text: text.slice(last), match: false });
+        return out;
+    }, [text, normalized]);
 
-    if (!normalizedQueries.length) return <span>{text}</span>;
-
+    if (!normalized.length) return <span>{text}</span>;
     return (
         <>
             {parts.map((p, i) =>
                 p.match ? (
                     <mark
                         key={i}
-                        className="bg-yellow-100 dark:bg-yellow-600 text-yellow-800 dark:text-yellow-200 font-semibold px-0.5 rounded"
+                        className="bg-yellow-100 text-yellow-900 dark:bg-yellow-600/60 dark:text-yellow-50 px-0.5 rounded"
                     >
                         {p.text}
                     </mark>
@@ -68,17 +59,25 @@ function Highlighter({ text = "", queries = [] }) {
     );
 }
 
-/** InfoRow: semantic label/value pair */
+/** 信息行（两列栅格） */
 const InfoRow = ({ term, children, className = "" }) => (
-    <div className={clsx("flex flex-wrap gap-3 items-start text-sm", className)}>
-        <dt className="w-24 flex-shrink-0 font-medium text-gray-600 dark:text-gray-300">{term}</dt>
-        <dd className="flex-1 flex flex-wrap gap-2 items-center text-gray-800 dark:text-gray-100">
-            {children}
-        </dd>
+    <div
+        className={clsx("items-start", className)}
+        style={{
+            display: "grid",
+            gridTemplateColumns: "100px 1fr",
+            columnGap: "16px",
+            rowGap: "10px",
+            fontSize: "15px",
+            lineHeight: 1.5,
+        }}
+    >
+        <dt className="text-slate-600 dark:text-slate-300 font-medium select-none">{term}</dt>
+        <dd className="text-slate-900 dark:text-slate-100">{children}</dd>
     </div>
 );
 
-// Semantic status map drives badge appearance
+/** 状态映射 */
 const STATUS_MAP = {
     conflict: { label: "Conflict", color: "danger", variant: "solid" },
     resolved: { label: "Resolved", color: "success", variant: "solid" },
@@ -89,6 +88,7 @@ const STATUS_MAP = {
 };
 
 export default function AbstractMetaCard({
+    className = "",
     title,
     pmid,
     journal,
@@ -97,8 +97,8 @@ export default function AbstractMetaCard({
     authors = [],
     meta = {},
     extraTags = [],
-    status, // semantic status key
-    statusBadge, // fallback string
+    status,
+    statusBadge,
     highlight = [],
     loading = false,
     onStar = null,
@@ -111,7 +111,7 @@ export default function AbstractMetaCard({
         if (!meta?.timestamp) return "—";
         try {
             return new Date(meta.timestamp).toLocaleString(undefined, {
-                dateStyle: "short",
+                dateStyle: "medium",
                 timeStyle: "short",
             });
         } catch {
@@ -119,266 +119,264 @@ export default function AbstractMetaCard({
         }
     }, [meta]);
 
-    const visibleAuthors = showAllAuthors ? authors : authors.slice(0, 5);
+    const visibleAuthors = showAllAuthors ? authors : authors.slice(0, 6);
     const moreCount = Math.max(0, authors.length - visibleAuthors.length);
 
-    // resolve status info
-    let statusInfo = null;
-    if (status && STATUS_MAP[status]) statusInfo = STATUS_MAP[status];
-    else if (statusBadge) {
-        statusInfo = { label: statusBadge, color: "gray", variant: "subtle" };
-    }
+    const statusInfo =
+        (status && STATUS_MAP[status]) ||
+        (statusBadge ? { label: statusBadge, color: "gray", variant: "subtle" } : null);
 
-    // Loading skeleton
+    /** Skeleton */
     if (loading) {
         return (
             <section
-                aria-label="Abstract metadata placeholder"
-                className="relative bg-gray-100 dark:bg-[#111827] rounded-3xl overflow-hidden p-6 animate-pulse grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-6"
+                aria-label="Abstract metadata loading"
+                className={clsx(
+                    "relative isolate mx-auto my-8 rounded-2xl overflow-hidden",
+                    "bg-white dark:bg-slate-800",
+                    "border border-slate-200 dark:border-slate-700 ring-1 ring-black/5 shadow-2xl",
+                    className
+                )}
+                style={{ maxWidth: "1080px" }}
             >
-                <div className="space-y-4">
-                    <div className="h-10 bg-gray-300 dark:bg-gray-700 rounded w-3/4" />
-                    <div className="flex gap-2">
-                        <div className="h-7 w-24 bg-gray-300 dark:bg-gray-700 rounded" />
-                        <div className="h-7 w-24 bg-gray-300 dark:bg-gray-700 rounded" />
-                    </div>
-                    <div className="space-y-2">
-                        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-1/2" />
-                        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-1/3" />
-                        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-2/3" />
-                    </div>
-                </div>
-                <div className="flex flex-col justify-between gap-4">
-                    <div className="bg-indigo-50 dark:bg-indigo-900 rounded-2xl p-5 flex flex-col gap-3 border border-indigo-100 dark:border-indigo-700">
-                        <div className="flex justify-between items-start">
-                            <div className="space-y-1">
-                                <div className="h-3 bg-gray-300 dark:bg-gray-700 rounded w-24" />
-                                <div className="h-5 bg-gray-300 dark:bg-gray-700 rounded w-32" />
-                            </div>
-                            <div className="space-y-1 text-right">
-                                <div className="h-3 bg-gray-300 dark:bg-gray-700 rounded w-16" />
-                                <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-20" />
-                            </div>
+                <div className="animate-pulse" style={{ padding: "clamp(18px, 3vw, 32px)" }}>
+                    <div className="h-7 bg-slate-200 dark:bg-slate-700 rounded w-3/4 mb-5" />
+                    <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 mb-7" />
+                    <div className="grid gap-6" style={{ gridTemplateColumns: "2fr 1fr" }}>
+                        <div className="space-y-3">
+                            <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-2/3" />
+                            <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/3" />
+                            <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2" />
                         </div>
-                        <div className="h-4 bg-gray-300 dark:bg-gray-700 rounded w-full" />
+                        <div className="h-28 bg-slate-100 dark:bg-slate-700 rounded-2xl" />
                     </div>
                 </div>
             </section>
         );
     }
 
+    /** Card */
     return (
         <section
             aria-label="Abstract metadata"
-            className="relative bg-white dark:bg-[#1f2937] rounded-3xl shadow-lg dark:shadow-xl border border-gray-100 dark:border-gray-700 p-6 grid grid-cols-1 md:grid-cols-[2fr_1fr] gap-6 overflow-hidden"
+            className={clsx(
+                // 卡片“自成一体”的容器
+                "relative isolate mx-auto my-8 rounded-[20px] overflow-hidden",
+                // 不透明背景，避免圆角露底
+                "bg-white dark:bg-slate-800",
+                // 统一边框 + 阴影
+                "border border-slate-200 dark:border-slate-700 ring-1 ring-black/5",
+                "shadow-[0_12px_36px_rgba(0,0,0,0.08)] hover:shadow-[0_18px_48px_rgba(0,0,0,0.12)] transition-shadow duration-300",
+                className
+            )}
+            // 这里用 inline 样式确保不会被其他文件复写
+            style={{
+                maxWidth: "1080px",
+            }}
         >
-            {/* Action zone */}
-            <div className="absolute top-4 right-4 flex gap-2 z-10">
+            {/* 顶部操作按钮 */}
+            <div className="absolute top-3 right-3 z-10 flex gap-1.5">
                 {onStar && (
-                    <Tooltip label="Star abstract" placement="bottom">
+                    <Tooltip label="Star">
                         <button
                             aria-label="Star"
                             onClick={onStar}
-                            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-yellow-400"
+                            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                         >
-                            <StarIcon className="w-5 h-5 text-yellow-500" />
+                            <StarIcon className="w-5 h-5 text-amber-500" />
                         </button>
                     </Tooltip>
                 )}
                 {onShare && (
-                    <Tooltip label="Share" placement="bottom">
+                    <Tooltip label="Share">
                         <button
                             aria-label="Share"
                             onClick={onShare}
-                            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-indigo-400"
+                            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                         >
-                            <ShareIcon className="w-5 h-5 text-indigo-600" />
+                            <ShareIcon className="w-5 h-5 text-indigo-600 dark:text-indigo-300" />
                         </button>
                     </Tooltip>
                 )}
                 {onHistory && (
-                    <Tooltip label="View history" placement="bottom">
+                    <Tooltip label="History">
                         <button
                             aria-label="History"
                             onClick={onHistory}
-                            className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition transform hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-gray-400"
+                            className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300"
                         >
-                            <ClockIcon className="w-5 h-5 text-gray-500" />
+                            <ClockIcon className="w-5 h-5 text-slate-500" />
                         </button>
                     </Tooltip>
                 )}
             </div>
 
-            {/* Left content */}
-            <div className="flex flex-col gap-5">
-                <div className="flex flex-col sm:flex-row sm:items-start gap-4">
-                    <div className="flex-1">
-                        <h1 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-gray-100 leading-tight break-words">
-                            <Highlighter text={title} queries={highlight} />
-                        </h1>
-                        <div className="mt-2 flex flex-wrap gap-2 items-center">
-                            {extraTags.map((t, i) => (
-                                <Badge
-                                    key={i}
-                                    variant="subtle"
-                                    color="gray"
-                                    size="sm"
-                                    className="uppercase tracking-wide"
-                                    title={t.label}
-                                >
-                                    {t.label}
-                                </Badge>
-                            ))}
-                            {statusInfo && (
-                                <Badge
-                                    variant={statusInfo.variant === "solid" ? "solid" : "subtle"}
-                                    color={statusInfo.color}
-                                    size="sm"
-                                    className="ml-1 uppercase tracking-wider"
-                                    title={statusInfo.label}
-                                >
-                                    {statusInfo.label}
-                                </Badge>
-                            )}
-                        </div>
+            {/* 内部内容：用内联 padding，几乎不受外部样式影响 */}
+            <div style={{ padding: "clamp(22px, 3.2vw, 36px)" }}>
+                {/* 标题 + 标签 */}
+                <div style={{ marginBottom: "18px" }}>
+                    <h1
+                        className="text-slate-900 dark:text-slate-50 font-extrabold tracking-tight break-words"
+                        style={{ fontSize: "clamp(20px, 2.4vw, 30px)", lineHeight: 1.15 }}
+                    >
+                        <Highlighter text={title} queries={highlight} />
+                    </h1>
+
+                    <div className="flex flex-wrap gap-2" style={{ marginTop: 8 }}>
+                        {extraTags?.map((t, i) => (
+                            <Badge
+                                key={i}
+                                variant="subtle"
+                                color="gray"
+                                size="sm"
+                                className="uppercase tracking-wide"
+                                title={t.label}
+                            >
+                                {t.label}
+                            </Badge>
+                        ))}
+                        {statusInfo && (
+                            <Badge
+                                variant={statusInfo.variant === "solid" ? "solid" : "subtle"}
+                                color={statusInfo.color}
+                                size="sm"
+                                className="uppercase tracking-wide"
+                            >
+                                {statusInfo.label}
+                            </Badge>
+                        )}
                     </div>
                 </div>
 
-                <dl className="space-y-3">
-                    <InfoRow term="PMID:">
-                        <div className="flex items-center gap-2 min-w-0">
-                            <span
-                                className="font-mono truncate text-indigo-700 dark:text-indigo-300"
-                                aria-label="PMID"
-                            >
-                                {pmid ?? "—"}
-                            </span>
-                            <CopyButton
-                                value={String(pmid || "")}
-                                ariaLabel="Copy PMID"
-                                className="flex-shrink-0"
-                            />
-                            {pmid && (
-                                <Tooltip label="Open on PubMed">
-                                    <a
-                                        href={`https://pubmed.ncbi.nlm.nih.gov/${pmid}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="ml-1 flex items-center gap-1 text-indigo-600 dark:text-indigo-300 hover:underline transition"
-                                    >
-                                        <ArrowTopRightOnSquareIcon
-                                            className="w-4 h-4"
-                                            aria-hidden="true"
-                                        />
-                                        <span className="sr-only">Open PMID externally</span>
-                                    </a>
-                                </Tooltip>
-                            )}
-                        </div>
-                    </InfoRow>
-
-                    {doi && (
-                        <InfoRow term="DOI:">
+                {/* 主体两栏：左信息 + 右 meta */}
+                <div
+                    className="grid gap-8"
+                    style={{
+                        gridTemplateColumns: "minmax(0, 2fr) minmax(260px, 1fr)",
+                    }}
+                >
+                    {/* 左侧信息 */}
+                    <dl className="space-y-4">
+                        {/* PMID + PubMed */}
+                        <InfoRow term="PMID">
                             <div className="flex items-center gap-2 min-w-0">
-                                <span className="truncate">{doi}</span>
-                                <CopyButton value={doi} ariaLabel="Copy DOI" />
-                                <Tooltip label="Resolve DOI">
-                                    <a
-                                        href={`https://doi.org/${doi}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="ml-1 flex items-center gap-1 text-indigo-600 dark:text-indigo-300 hover:underline transition"
-                                    >
-                                        <ArrowTopRightOnSquareIcon
-                                            className="w-4 h-4"
-                                            aria-hidden="true"
-                                        />
-                                        <span className="sr-only">Open DOI externally</span>
-                                    </a>
-                                </Tooltip>
-                            </div>
-                        </InfoRow>
-                    )}
-
-                    <InfoRow term="Journal:">
-                        <div className="flex flex-wrap items-center gap-2 min-w-0">
-                            <span className="truncate">{journal || "—"}</span>
-                            <Badge variant="subtle" color="gray" size="sm">
-                                {year || "—"}
-                            </Badge>
-                        </div>
-                    </InfoRow>
-
-                    {authors && authors.length > 0 && (
-                        <InfoRow term="Authors:">
-                            <div className="flex flex-wrap items-center gap-2">
-                                {visibleAuthors.map((a, i) => (
-                                    <Tooltip key={i} label={a}>
-                                        <div
-                                            className="text-[12px] bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full truncate max-w-[160px]"
-                                            aria-label={`Author ${a}`}
+                                <span className="font-mono text-indigo-700 dark:text-indigo-300 truncate">
+                                    {pmid ?? "—"}
+                                </span>
+                                {!!pmid && (
+                                    <Tooltip label="Open in PubMed">
+                                        <a
+                                            href={`https://pubmed.ncbi.nlm.nih.gov/${pmid}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-300 hover:underline"
+                                            aria-label={`Open PMID ${pmid} on PubMed`}
                                         >
-                                            <Highlighter text={a} queries={highlight} />
-                                        </div>
+                                            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                                            <span className="text-[13px]">PubMed</span>
+                                        </a>
                                     </Tooltip>
-                                ))}
-                                {moreCount > 0 && (
-                                    <button
-                                        type="button"
-                                        onClick={() => setShowAllAuthors(s => !s)}
-                                        className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline flex items-center gap-1 font-medium transition"
-                                        aria-label={
-                                            showAllAuthors
-                                                ? "Show fewer authors"
-                                                : `Show ${moreCount} more authors`
-                                        }
-                                    >
-                                        {showAllAuthors ? "Show less" : `+${moreCount} more`}
-                                    </button>
                                 )}
                             </div>
                         </InfoRow>
-                    )}
-                </dl>
-            </div>
 
-            {/* Right meta */}
-            <div className="flex flex-col justify-between gap-4">
-                <div className="bg-indigo-50 dark:bg-[#111827] rounded-2xl p-5 flex flex-col gap-4 border border-indigo-100 dark:border-indigo-700">
-                    <div className="flex justify-between items-start">
-                        <div className="flex flex-col">
-                            <div className="text-[10px] font-semibold uppercase text-indigo-700 dark:text-indigo-300 tracking-wide">
-                                Generated / Reviewed by
-                            </div>
-                            <div className="mt-1 flex flex-wrap gap-2">
-                                <Badge variant="subtle" color="primary" size="sm">
-                                    {meta?.model || "unknown"}
+                        {/* DOI */}
+                        {doi && (
+                            <InfoRow term="DOI">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <span className="truncate">{doi}</span>
+                                    <Tooltip label="Resolve DOI">
+                                        <a
+                                            href={`https://doi.org/${doi}`}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-300 hover:underline"
+                                            aria-label="Open DOI"
+                                        >
+                                            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
+                                            <span className="text-[13px]">Open</span>
+                                        </a>
+                                    </Tooltip>
+                                </div>
+                            </InfoRow>
+                        )}
+
+                        {/* Journal / Year */}
+                        <InfoRow term="Journal">
+                            <div className="flex flex-wrap items-center gap-2 min-w-0">
+                                <span className="truncate">{journal || "—"}</span>
+                                <Badge variant="subtle" color="gray" size="sm">
+                                    {year || "—"}
                                 </Badge>
                             </div>
-                        </div>
-                        <div className="text-right text-[11px] text-gray-600 dark:text-gray-400">
-                            <div className="font-medium">Timestamp</div>
-                            <div>{formattedTime}</div>
-                        </div>
-                    </div>
-                    {meta?.extra && (
-                        <div
-                            className="text-sm text-gray-700 dark:text-gray-200"
-                            aria-label="Extra info"
-                        >
-                            {meta.extra}
-                        </div>
-                    )}
-                    {meta?.quality && (
-                        <div className="mt-1 flex items-center gap-2">
-                            <div className="text-[11px] font-semibold text-gray-600 dark:text-gray-300">
-                                Quality:
+                        </InfoRow>
+
+                        {/* Authors */}
+                        {authors && authors.length > 0 && (
+                            <InfoRow term="Authors">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    {visibleAuthors.map((a, i) => (
+                                        <Tooltip key={i} label={a}>
+                                            <div
+                                                className="text-[12px] px-3 py-1 rounded-full bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-100 truncate"
+                                                style={{ maxWidth: 200 }}
+                                                aria-label={`Author ${a}`}
+                                                title={a}
+                                            >
+                                                <Highlighter text={a} queries={highlight} />
+                                            </div>
+                                        </Tooltip>
+                                    ))}
+                                    {moreCount > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAllAuthors((s) => !s)}
+                                            className="text-xs text-indigo-600 dark:text-indigo-300 hover:underline font-medium"
+                                            aria-label={showAllAuthors ? "Show fewer authors" : `Show ${moreCount} more authors`}
+                                        >
+                                            {showAllAuthors ? "Show less" : `+${moreCount} more`}
+                                        </button>
+                                    )}
+                                </div>
+                            </InfoRow>
+                        )}
+                    </dl>
+
+                    {/* 右侧 meta 卡片 */}
+                    <aside
+                        className="rounded-2xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/40"
+                        style={{ padding: "18px" }}
+                    >
+                        <div className="flex items-start justify-between gap-4">
+                            <div>
+                                <div className="text-[10px] tracking-wider uppercase font-semibold text-slate-700 dark:text-slate-300">
+                                    Generated / Reviewed by
+                                </div>
+                                <div className="mt-1 flex flex-wrap gap-2">
+                                    <Badge variant="subtle" color="primary" size="sm">
+                                        {meta?.model || "unknown"}
+                                    </Badge>
+                                </div>
                             </div>
-                            <div className="text-xs px-2 py-1 bg-green-100 dark:bg-green-800 text-green-800 dark:text-green-200 rounded-full">
-                                {meta.quality}
+                            <div className="text-right text-[11px] text-slate-600 dark:text-slate-400">
+                                <div className="font-medium">Timestamp</div>
+                                <div>{formattedTime}</div>
                             </div>
                         </div>
-                    )}
+
+                        {meta?.extra && (
+                            <div className="mt-3 text-[13px] text-slate-700 dark:text-slate-200">{meta.extra}</div>
+                        )}
+
+                        {meta?.quality && (
+                            <div className="mt-3 flex items-center gap-2">
+                                <div className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">Quality:</div>
+                                <div className="text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-100">
+                                    {meta.quality}
+                                </div>
+                            </div>
+                        )}
+                    </aside>
                 </div>
             </div>
         </section>
@@ -386,6 +384,7 @@ export default function AbstractMetaCard({
 }
 
 AbstractMetaCard.propTypes = {
+    className: PropTypes.string,
     title: PropTypes.string.isRequired,
     pmid: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
     journal: PropTypes.string,
@@ -414,6 +413,7 @@ AbstractMetaCard.propTypes = {
 };
 
 AbstractMetaCard.defaultProps = {
+    className: "",
     pmid: "-",
     journal: "-",
     year: "-",
