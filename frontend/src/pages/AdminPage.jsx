@@ -7,9 +7,12 @@ import React, {
   memo,
 } from "react";
 import PropTypes from "prop-types";
-import { Link } from "react-router-dom";
 import clsx from "clsx";
 import { getAdminStats } from "../api";
+
+const AppLink = ({ to, children, ...rest }) => (
+  <a href={typeof to === "string" ? to : "#"} {...rest}>{children}</a>
+);
 
 /* ---------------------------------- Hook ---------------------------------- */
 
@@ -189,12 +192,12 @@ function AdminPageImpl(_, ref) {
             </button>
 
             {hasConflicts ? (
-              <Link
+              <AppLink
                 to="/admin/arbitration"
                 className="inline-flex items-center gap-2 text-red-700 bg-red-50 px-4 py-2 rounded-md text-sm font-semibold hover:underline transition"
               >
                 Resolve Conflicts ({stats.conflicts})
-              </Link>
+              </AppLink>
             ) : (
               <Badge color="green">No conflicts</Badge>
             )}
@@ -255,12 +258,12 @@ function AdminPageImpl(_, ref) {
             loading={loading}
             extra={
               !loading && hasConflicts ? (
-                <Link
+                <AppLink
                   to="/admin/arbitration"
                   className="text-sm underline hover:text-red-600"
                 >
                   Resolve now
-                </Link>
+                </AppLink>
               ) : (
                 !loading && <span className="text-xs text-gray-600">None</span>
               )
@@ -276,7 +279,7 @@ function AdminPageImpl(_, ref) {
           />
         </div>
 
-        {/* Platform summary + quick links */}
+        {/* Platform summary + quick AppLinks */}
         <section className="flex flex-col lg:flex-row gap-8 bg-gray-50 border rounded-xl p-6">
           <div className="flex-1 flex flex-col gap-4">
             <div className="flex items-start gap-3">
@@ -333,7 +336,7 @@ function AdminPageImpl(_, ref) {
               Quick Actions
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Link
+              <AppLink
                 to="/admin/reviewers"
                 className="flex items-center justify-between gap-2 px-4 py-3 bg-white border rounded-lg shadow hover:shadow-md transition"
               >
@@ -342,9 +345,9 @@ function AdminPageImpl(_, ref) {
                   <div className="text-sm font-medium">Manage Reviewers</div>
                 </div>
                 <div className="text-xs text-gray-500">CRUD</div>
-              </Link>
+              </AppLink>
 
-              <Link
+              <AppLink
                 to="/admin/arbitration"
                 className="flex items-center justify-between gap-2 px-4 py-3 bg-white border rounded-lg shadow hover:shadow-md transition"
               >
@@ -355,9 +358,9 @@ function AdminPageImpl(_, ref) {
                 <div className="text-xs text-gray-500">
                   {arbitrationCount} pending
                 </div>
-              </Link>
+              </AppLink>
 
-              <Link
+              <AppLink
                 to="/admin/export"
                 className="flex items-center justify-between gap-2 px-4 py-3 bg-white border rounded-lg shadow hover:shadow-md transition"
               >
@@ -366,9 +369,9 @@ function AdminPageImpl(_, ref) {
                   <div className="text-sm font-medium">Export Data</div>
                 </div>
                 <div className="text-xs text-gray-500">Consensus</div>
-              </Link>
+              </AppLink>
 
-              <Link
+              <AppLink
                 to="/admin/locks"
                 className="flex items-center justify-between gap-2 px-4 py-3 bg-white border rounded-lg shadow hover:shadow-md transition"
               >
@@ -377,7 +380,7 @@ function AdminPageImpl(_, ref) {
                   <div className="text-sm font-medium">View Locks</div>
                 </div>
                 <div className="text-xs text-gray-500">In-flight</div>
-              </Link>
+              </AppLink>
             </div>
           </div>
         </section>

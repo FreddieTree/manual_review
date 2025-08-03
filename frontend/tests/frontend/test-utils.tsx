@@ -2,6 +2,7 @@
 import React from "react";
 import { render as rtlRender } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { within } from '@testing-library/react';
 
 type Options = {
     route?: string;

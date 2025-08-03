@@ -8,11 +8,11 @@ import {
     updateReviewer,
     deleteReviewer,
 } from "../api";
-import { Input } from "../components/ui/Input";
-import { Select } from "../components/ui/Select";
-import { Button } from "../components/ui/Button";
+import Input from "../components/ui/Input";
+import Select from "../components/ui/Select";
+import Button from "../components/ui/Button";
 import Loader from "../components/ui/Loader";
-import { Badge } from "../components/ui/Badge";
+import Badge from "../components/ui/Badge";
 import ConfirmModal from "../components/ConfirmModal";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -480,6 +480,7 @@ export default function ReviewerAdminPage() {
 
             {/* Delete confirm modal */}
             <ConfirmModal
+                role="alertdialog"
                 open={confirmOpen}
                 title="Delete reviewer"
                 description={`Permanently delete reviewer "${pendingDelete}"? This cannot be undone.`}

@@ -9,13 +9,12 @@ import React, {
 } from "react";
 import PropTypes from "prop-types";
 import clsx from "clsx";
-import { useNavigate } from "react-router-dom";
 
 import { getAssignedAbstract, submitReview } from "../api";
 import AbstractMetaCard from "../components/AbstractMetaCard";
 import AssertionEditor from "../components/AssertionEditor";
 import AssertionSummaryPanel from "../components/AssertionSummaryPanel";
-import DecisionBadge from "../components/DecisionBadge"; // 路径统一到 ui 版本
+import DecisionBadge from "../components/DecisionBadge";
 import TopBar from "../components/TopBar";
 import ConfirmModal from "../components/ConfirmModal";
 import { deriveOverallDecision } from "../utils";
@@ -31,7 +30,6 @@ const STATUS = {
  * ReviewPage - optimized, robust, A11y-friendly.
  */
 function ReviewPageImpl(_, ref) {
-  const navigate = useNavigate();
 
   const [abstract, setAbstract] = useState(null);
   const [reviewStatesMap, setReviewStatesMap] = useState({});
@@ -71,9 +69,12 @@ function ReviewPageImpl(_, ref) {
     try {
       const resp = await getAssignedAbstract();
       if (reqIdRef.current !== id) return; // 过期请求
-      if (!resp || !resp.abstract) throw new Error("No assigned abstract.");
+      // 同时兼容 { abstract: {...} } 和直接扁平 {...}
+      const raw = resp?.abstract ?? resp;
+      if (!raw) throw new Error("No assigned abstract.");
+      const a = { ...raw };
 
-      const a = { ...resp.abstract };
+
       if (!Array.isArray(a.sentence_results)) a.sentence_results = [];
       a.sentence_results = a.sentence_results.map((s, idx) => ({
         sentence_index: s.sentence_index ?? idx + 1, // 1-based 显示
@@ -123,10 +124,9 @@ function ReviewPageImpl(_, ref) {
         err?.status === 401 ||
         err?.status === 403
       ) {
-        setTimeout(() => navigate("/"), 1000);
       }
     }
-  }, [navigate]);
+  }, []);
 
   // 初次加载
   useEffect(() => {
@@ -263,12 +263,25 @@ function ReviewPageImpl(_, ref) {
       .map((rs) => ({ review: rs.decision, isModified: !!rs.isModified }));
   }, [reviewStatesMap, abstract]);
 
+
+  // 新增：收集 is_new 的断言，交由 deriveOverallDecision 参考
+  const addedAssertions = useMemo(() => {
+    if (!abstract) return [];
+    const out = [];
+    (abstract.sentence_results || []).forEach((s) => {
+      (s.assertions || []).forEach((a) => {
+        if (a && a.is_new) out.push(a);
+      });
+    });
+    return out;
+  }, [abstract]);
+
   const overallDecision = useMemo(() => {
     return deriveOverallDecision({
       existingReviews: allAssertionStates,
-      addedAssertions: [], // 交由 deriveOverallDecision 权衡
+      addedAssertions,
     });
-  }, [allAssertionStates]);
+  }, [allAssertionStates, addedAssertions]);
 
   /* -------------------------------- Submission -------------------------------- */
 
@@ -325,8 +338,7 @@ function ReviewPageImpl(_, ref) {
       setConfirmExitOpen(true);
       return;
     }
-    navigate("/");
-  }, [hasUnsavedChanges, submitting, navigate]);
+  }, [hasUnsavedChanges, submitting]);
 
   /* --------------------------------- Rendering -------------------------------- */
 
@@ -368,7 +380,6 @@ function ReviewPageImpl(_, ref) {
               Retry
             </button>
             <button
-              onClick={() => navigate("/")}
               className="px-4 py-2 border rounded-md"
             >
               Go to Login
@@ -389,13 +400,15 @@ function ReviewPageImpl(_, ref) {
       className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-blue-100 py-6 px-4 flex flex-col items-center"
     >
       {/* TopBar */}
-      <div className="w-full max-w-[1100px] mb-6">
+      <div className="w-full max-w-[1100px] mb-6" data-testid="TopBar">
         <TopBar abstract={abstract} onExit={handleExit} />
       </div>
 
       <div className="w-full max-w-[1100px] flex flex-col gap-8">
         {/* Abstract metadata */}
-        <AbstractMetaCard {...abstract} highlight={[]} />
+        <div data-testid="AbstractMetaCard">
+          <AbstractMetaCard {...abstract} highlight={[]} />
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-8">
           {/* Left content */}
@@ -459,6 +472,7 @@ function ReviewPageImpl(_, ref) {
 
       {/* Confirm: submit when not ACCEPT */}
       <ConfirmModal
+        role="alertdialog"
         open={confirmSubmitOpen}
         title="Submit review"
         description={`Overall decision is "${overallDecision.toUpperCase()}". Are you sure you want to submit?`}
@@ -480,7 +494,6 @@ function ReviewPageImpl(_, ref) {
         intent="danger"
         onConfirm={() => {
           setConfirmExitOpen(false);
-          navigate("/");
         }}
         onCancel={() => setConfirmExitOpen(false)}
       />

@@ -22,7 +22,7 @@ vi.mock("../../../src/api", () => ({
 describe("AdminPage", () => {
     test("shows key stats and refresh works", async () => {
         render(<AdminPage />);
-        await waitFor(() => expect(screen.getByText(/total abstracts/i)).toBeInTheDocument());
+        await screen.findByText(/total abstracts/i);
         expect(screen.getByText("150")).toBeInTheDocument();
         expect(screen.getByText(/fully reviewed/i)).toBeInTheDocument();
         expect(screen.getByText("100")).toBeInTheDocument();

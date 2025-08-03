@@ -1,26 +1,10 @@
+// src/components/ui/Tooltip.jsx
 import React, { forwardRef, useId, useState, useRef, useEffect, cloneElement } from "react";
 import PropTypes from "prop-types";
 import clsx from "clsx";
 
-/**
- * Polished tooltip with:
- *  - fade/scale animation (respects prefers-reduced-motion)
- *  - accessible aria attributes
- *  - arrow
- *  - basic viewport collision avoidance
- *  - keyboard focus & escape key dismissal
- */
 function TooltipImpl(
-    {
-        label,
-        children,
-        placement = "top", // top / bottom / left / right
-        className = "",
-        delay = 100,
-        offset = 8,
-        maxWidth = 220,
-        ...rest
-    },
+    { label, children, placement = "top", className = "", delay = 100, offset = 8, maxWidth = 220, ...rest },
     ref
 ) {
     const id = useId();
@@ -29,9 +13,16 @@ function TooltipImpl(
     const [visible, setVisible] = useState(false);
     const [style, setStyle] = useState({});
     const [arrowStyle, setArrowStyle] = useState({});
-    const prefersReduced =
-        typeof window !== "undefined" &&
-        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // ✅ 安全获取 matchMedia
+    let prefersReduced = false;
+    if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+        try {
+            const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
+            prefersReduced = !!mql && !!mql.matches;
+        } catch {
+            prefersReduced = false;
+        }
+    }
     const showTimer = useRef(null);
 
     const show = () => {
@@ -43,7 +34,6 @@ function TooltipImpl(
         setVisible(false);
     };
 
-    // Positioning with basic collision detection
     const updatePosition = () => {
         const trigger = triggerRef.current;
         const tip = tooltipRef.current;
@@ -57,29 +47,13 @@ function TooltipImpl(
         const compute = (pl) => {
             switch (pl) {
                 case "top":
-                    return {
-                        top: trigRect.top - tipRect.height - offset,
-                        left: trigRect.left + trigRect.width / 2 - tipRect.width / 2,
-                        placement: "top",
-                    };
+                    return { top: trigRect.top - tipRect.height - offset, left: trigRect.left + trigRect.width / 2 - tipRect.width / 2, placement: "top" };
                 case "bottom":
-                    return {
-                        top: trigRect.bottom + offset,
-                        left: trigRect.left + trigRect.width / 2 - tipRect.width / 2,
-                        placement: "bottom",
-                    };
+                    return { top: trigRect.bottom + offset, left: trigRect.left + trigRect.width / 2 - tipRect.width / 2, placement: "bottom" };
                 case "left":
-                    return {
-                        top: trigRect.top + trigRect.height / 2 - tipRect.height / 2,
-                        left: trigRect.left - tipRect.width - offset,
-                        placement: "left",
-                    };
+                    return { top: trigRect.top + trigRect.height / 2 - tipRect.height / 2, left: trigRect.left - tipRect.width - offset, placement: "left" };
                 case "right":
-                    return {
-                        top: trigRect.top + trigRect.height / 2 - tipRect.height / 2,
-                        left: trigRect.right + offset,
-                        placement: "right",
-                    };
+                    return { top: trigRect.top + trigRect.height / 2 - tipRect.height / 2, left: trigRect.right + offset, placement: "right" };
                 default:
                     return {};
             }
@@ -87,7 +61,6 @@ function TooltipImpl(
 
         let { top, left, placement: finalPlacement } = compute(placement);
 
-        // simple collision flip
         if (finalPlacement === "top" && top < 8) {
             ({ top, left, placement: finalPlacement } = compute("bottom"));
         } else if (finalPlacement === "bottom" && top + tipRect.height > viewportH - 8) {
@@ -98,12 +71,10 @@ function TooltipImpl(
             ({ top, left, placement: finalPlacement } = compute("left"));
         }
 
-        // clamp to viewport with small padding
         const padding = 6;
         left = Math.min(Math.max(left, padding), viewportW - tipRect.width - padding);
         top = Math.min(Math.max(top, padding), viewportH - tipRect.height - padding);
 
-        // arrow positioning
         const arrowSize = 8;
         let arrowPos = {};
         if (finalPlacement === "top" || finalPlacement === "bottom") {
@@ -118,18 +89,10 @@ function TooltipImpl(
             arrowPos.transform = "rotate(45deg)";
         }
 
-        setStyle({
-            top: Math.round(top + window.scrollY),
-            left: Math.round(left + window.scrollX),
-        });
-        setArrowStyle({
-            width: arrowSize,
-            height: arrowSize,
-            ...arrowPos,
-        });
+        setStyle({ top: Math.round(top + window.scrollY), left: Math.round(left + window.scrollX) });
+        setArrowStyle({ width: arrowSize, height: arrowSize, ...arrowPos });
     };
 
-    // Sync on visibility or window resize/scroll
     useEffect(() => {
         if (visible) updatePosition();
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,7 +112,6 @@ function TooltipImpl(
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [visible]);
 
-    // hide on Escape
     useEffect(() => {
         const onKey = (e) => {
             if (e.key === "Escape") hide();
@@ -160,7 +122,6 @@ function TooltipImpl(
         }
     }, [visible]);
 
-    // Clone child to attach ref if it doesn't already forward
     const child = React.isValidElement(children)
         ? cloneElement(children, {
             ref: (node) => {
@@ -213,15 +174,10 @@ function TooltipImpl(
                 >
                     <div className="relative">
                         <div className="truncate">{label}</div>
-                        {/* arrow */}
                         <div
                             aria-hidden="true"
                             className="absolute bg-black"
-                            style={{
-                                ...arrowStyle,
-                                borderRadius: 2,
-                                boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
-                            }}
+                            style={{ ...arrowStyle, borderRadius: 2, boxShadow: "0 4px 12px rgba(0,0,0,0.15)" }}
                         />
                     </div>
                 </div>

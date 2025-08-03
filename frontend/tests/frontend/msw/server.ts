@@ -1,4 +1,4 @@
-// tests/frontend/mocks/server.ts
+// tests/frontend/msw/server.ts
 import { setupServer } from "msw/node";
 import { handlers } from "./handlers";
 
