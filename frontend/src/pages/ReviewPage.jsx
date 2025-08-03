@@ -30,7 +30,6 @@ const STATUS = {
  * ReviewPage - optimized, robust, A11y-friendly.
  */
 function ReviewPageImpl(_, ref) {
-
   const [abstract, setAbstract] = useState(null);
   const [reviewStatesMap, setReviewStatesMap] = useState({});
   const [statusMsg, setStatusMsg] = useState("");
@@ -44,7 +43,7 @@ function ReviewPageImpl(_, ref) {
   const isMountedRef = useRef(false);
   const reqIdRef = useRef(0);
 
-  // 是否有未保存修改
+  // 未保存修改
   const hasUnsavedChanges = useMemo(() => {
     if (!abstract) return false;
     const allStates = Object.values(reviewStatesMap).flat();
@@ -69,11 +68,17 @@ function ReviewPageImpl(_, ref) {
     try {
       const resp = await getAssignedAbstract();
       if (reqIdRef.current !== id) return; // 过期请求
-      // 同时兼容 { abstract: {...} } 和直接扁平 {...}
-      const raw = resp?.abstract ?? resp;
+
+      // 兼容 Response 或 直接对象
+      let parsed = resp;
+      try {
+        if (resp && typeof resp.json === "function") parsed = await resp.json();
+      } catch (_) { }
+
+      // 支持 { abstract: {...} } 或 直接扁平 {...}
+      const raw = parsed?.abstract ?? parsed;
       if (!raw) throw new Error("No assigned abstract.");
       const a = { ...raw };
-
 
       if (!Array.isArray(a.sentence_results)) a.sentence_results = [];
       a.sentence_results = a.sentence_results.map((s, idx) => ({
@@ -85,7 +90,7 @@ function ReviewPageImpl(_, ref) {
 
       setAbstract(a);
 
-      // 初始化/保留 reviewState —— 统一 decision 字段
+      // 初始化/保留 reviewState
       setReviewStatesMap((prev) => {
         const next = {};
         a.sentence_results.forEach((s) => {
@@ -118,13 +123,6 @@ function ReviewPageImpl(_, ref) {
           ? err
           : err?.message || "Failed to load abstract.";
       setStatusMsg(message);
-      // 非法/过期会话等，回登录
-      if (
-        String(message).toLowerCase().includes("unauthorized") ||
-        err?.status === 401 ||
-        err?.status === 403
-      ) {
-      }
     }
   }, []);
 
@@ -263,8 +261,6 @@ function ReviewPageImpl(_, ref) {
       .map((rs) => ({ review: rs.decision, isModified: !!rs.isModified }));
   }, [reviewStatesMap, abstract]);
 
-
-  // 新增：收集 is_new 的断言，交由 deriveOverallDecision 参考
   const addedAssertions = useMemo(() => {
     if (!abstract) return [];
     const out = [];
@@ -336,7 +332,6 @@ function ReviewPageImpl(_, ref) {
   const handleExit = useCallback(() => {
     if (hasUnsavedChanges && !submitting) {
       setConfirmExitOpen(true);
-      return;
     }
   }, [hasUnsavedChanges, submitting]);
 
@@ -379,11 +374,7 @@ function ReviewPageImpl(_, ref) {
             >
               Retry
             </button>
-            <button
-              className="px-4 py-2 border rounded-md"
-            >
-              Go to Login
-            </button>
+            <button className="px-4 py-2 border rounded-md">Go to Login</button>
           </div>
         </div>
       </div>

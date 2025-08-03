@@ -1,8 +1,7 @@
 // tests/frontend/msw/handlers.ts
 import { http, HttpResponse } from "msw";
 
-/** ───────────────────────── In-memory DB for tests ───────────────────────── */
-
+/** In-memory DB for tests */
 type Reviewer = {
     name: string;
     email: string;
@@ -25,8 +24,8 @@ type AdminStats = {
 };
 
 let reviewers: Reviewer[] = [
-    { name: "Alice", email: "a@bristol.ac.uk", role: "reviewer", active: true, note: "" },
-    { name: "Bob", email: "b@bristol.ac.uk", role: "admin", active: false, note: "on leave" },
+    { name: "Alice", email: "alice@bristol.ac.uk", role: "reviewer", active: true, note: "" },
+    { name: "Bob", email: "bob@bristol.ac.uk", role: "admin", active: false, note: "on leave" },
 ];
 
 let adminStats: AdminStats = {
@@ -42,7 +41,6 @@ let adminStats: AdminStats = {
     last_export: "2025-06-01 10:00",
 };
 
-
 const assignedAbstract = {
     pmid: "12345",
     title: "Sample title for testing",
@@ -53,9 +51,7 @@ const assignedAbstract = {
         {
             sentence_index: 1,
             sentence: "This is a sample sentence one.",
-            assertions: [
-                { id: "a1", text: "Gene A upregulates Gene B", comment: "", is_new: true } // ← 关键：标记新增
-            ],
+            assertions: [{ id: "a1", text: "Gene A upregulates Gene B", comment: "", is_new: true }],
         },
         {
             sentence_index: 2,
@@ -65,13 +61,12 @@ const assignedAbstract = {
     ],
 };
 
-// 提供顶层和 abstract 两种形状
 const assignedAbstractPayload = {
     abstract: { ...assignedAbstract },
     ...assignedAbstract,
 };
 
-/** Reset helpers for tests */
+// Reset helper
 export function resetDb() {
     reviewers = [
         { name: "Alice", email: "alice@bristol.ac.uk", role: "reviewer", active: true, note: "" },
@@ -107,10 +102,8 @@ function parseListParams(req: Request) {
     return { q, page, per, offset };
 }
 
-/** ─────────────────────────────── Handlers ─────────────────────────────── */
-
-// Admin stats（多别名 + 多形状）
-function adminStatsBody() {
+/** Response builders */
+function buildAdminStatsBody() {
     let ratio: number | null = null;
     if (typeof adminStats.reviewed_ratio === "number") {
         ratio = adminStats.reviewed_ratio;
@@ -121,77 +114,59 @@ function adminStatsBody() {
     ) {
         ratio = Math.round((adminStats.reviewed_count / adminStats.total_abstracts) * 1000) / 10;
     }
-    const plain = { ...adminStats, reviewed_ratio: ratio };
-    return {
-        success: true,
-        data: plain,
-        meta: { ok: true },
-        ...plain,
+    const plain = {
+        ...adminStats,
+        reviewed_ratio: ratio,
+        // camelCase variants
+        totalAbstracts: adminStats.total_abstracts,
+        totalReviewers: adminStats.total_reviewers,
+        reviewedCount: adminStats.reviewed_count,
+        activeReviewers: adminStats.active_reviewers,
+        arbitrationCount: adminStats.arbitration_count,
+        lastExport: adminStats.last_export,
     };
+    return { success: true, data: plain, meta: { ok: true }, ...plain };
 }
 
-const adminStatsRoutes = [
-    "/api/admin/stats",
-    "/api/stats",
-    "/admin/stats",
-    "/api/admin/overview",
-    "/api/admin/dashboard",
-    "/api/admin/metrics",
-    "/api/api/admin/stats",
-    "/api/api/stats",
-];
-const adminHandlers = adminStatsRoutes.map((path) =>
-    http.get(path, () => HttpResponse.json(adminStatsBody(), { status: 200 })),
+/** Handlers */
+
+// Admin stats fallback (covers many variants)
+const adminStatsRegex =
+    /\/(api\/)?(v\d+\/)?(admin\/)?(stats|overview|dashboard|metrics|summary|status)\/?$/i;
+const adminStatsFallback = http.get(adminStatsRegex, () =>
+    HttpResponse.json(buildAdminStatsBody(), { status: 200 })
 );
 
-// Reviewers 列表/增删改（多别名）
-const reviewerListRoutes = [
-    "/api/reviewers",
-    "/reviewers",
-    "/api/admin/reviewers",
-    "/admin/reviewers",
-    "/api/api/reviewers",
-];
-const listHandlers = reviewerListRoutes.map((path) =>
-    http.get(path, ({ request }) => {
-        const { q, per, offset } = parseListParams(request);
-        let data = reviewers.slice();
-        if (q) {
-            data = data.filter(
-                (r) =>
-                    (r.name || "").toLowerCase().includes(q) ||
-                    (r.email || "").toLowerCase().includes(q),
-            );
-        }
-        const total = data.length;
-        const pageData = data.slice(offset, offset + per);
-        return HttpResponse.json(
-            { reviewers: pageData, meta: { total }, total },
-            { status: 200 },
+// Reviewers list fallback
+const reviewerListRegex = /\/(api\/)?(v\d+\/)?(admin\/)?(reviewers|users)(\/list)?\/?$/i;
+const reviewerListFallback = http.get(reviewerListRegex, ({ request }) => {
+    const { q, per, offset } = parseListParams(request);
+    let data = reviewers.slice();
+    if (q) {
+        data = data.filter(
+            (r) =>
+                (r.name || "").toLowerCase().includes(q) ||
+                (r.email || "").toLowerCase().includes(q)
         );
-    }),
-);
+    }
+    const total = data.length;
+    const pageData = data.slice(offset, offset + per);
+    return HttpResponse.json({ reviewers: pageData, meta: { total }, total }, { status: 200 });
+});
 
-const createRoutes = [
+// Create / update / delete reviewers
+const createReviewerRoutes = [
     "/api/reviewers",
     "/reviewers",
     "/api/admin/reviewers",
     "/admin/reviewers",
-    "/api/api/reviewers",
 ];
-const updateRoutes = [
-    "/api/reviewers/:email",
-    "/reviewers/:email",
-    "/api/admin/reviewers/:email",
-    "/admin/reviewers/:email",
-    "/api/api/reviewers/:email",
-];
-const deleteRoutes = updateRoutes;
-
-const createHandlers = createRoutes.map((path) =>
+const createReviewerHandlers = createReviewerRoutes.map((path) =>
     http.post(path, async ({ request }) => {
         let body: any = {};
-        try { body = await request.json(); } catch { }
+        try {
+            body = await request.json();
+        } catch { }
         const name = String(body?.name || "").trim();
         const email = normEmail(String(body?.email || ""));
         if (!name || !email) {
@@ -200,26 +175,38 @@ const createHandlers = createRoutes.map((path) =>
         if (reviewers.some((r) => normEmail(r.email) === email)) {
             return HttpResponse.json({ message: "email exists" }, { status: 422 });
         }
-        reviewers.push({ name, email, role: body?.role === "admin" ? "admin" : "reviewer", active: true, note: "" });
+        reviewers.push({
+            name,
+            email,
+            role: body?.role === "admin" ? "admin" : "reviewer",
+            active: true,
+            note: "",
+        });
         adminStats.total_reviewers = (adminStats.total_reviewers || 0) + 1;
         adminStats.new_reviewers = (adminStats.new_reviewers || 0) + 1;
         return HttpResponse.json({ ok: true }, { status: 201 });
-    }),
+    })
 );
-
-const updateHandlers = updateRoutes.map((path) =>
+const updateReviewerRoutes = [
+    "/api/reviewers/:email",
+    "/reviewers/:email",
+    "/api/admin/reviewers/:email",
+    "/admin/reviewers/:email",
+];
+const updateReviewerHandlers = updateReviewerRoutes.map((path) =>
     http.put(path, async ({ params, request }) => {
         const target = normEmail(decodeURIComponent(String(params.email || "")));
         const idx = reviewers.findIndex((r) => normEmail(r.email) === target);
         if (idx < 0) return HttpResponse.json({ message: "not found" }, { status: 404 });
         let body: Partial<Reviewer> = {};
-        try { body = await request.json(); } catch { }
+        try {
+            body = await request.json();
+        } catch { }
         reviewers[idx] = { ...reviewers[idx], ...body, email: reviewers[idx].email };
         return HttpResponse.json({ ok: true }, { status: 200 });
-    }),
+    })
 );
-
-const deleteHandlers = deleteRoutes.map((path) =>
+const deleteReviewerHandlers = updateReviewerRoutes.map((path) =>
     http.delete(path, ({ params }) => {
         const target = normEmail(decodeURIComponent(String(params.email || "")));
         const before = reviewers.length;
@@ -228,67 +215,76 @@ const deleteHandlers = deleteRoutes.map((path) =>
             return HttpResponse.json({ message: "not found" }, { status: 404 });
         }
         return HttpResponse.json({ ok: true }, { status: 200 });
-    }),
+    })
 );
 
-// Assigned abstract（多别名 + 双形状）
-const assignedRoutes = [
+// Assigned abstract (fallback + explicit)
+const assignedRegex =
+    /\/(api\/)?(v\d+\/)?((reviews?|abstracts?|review)\/assigned|assigned[_-]?abstract)\/?$/i;
+const assignedFallback = http.get(assignedRegex, () =>
+    HttpResponse.json(assignedAbstractPayload, { status: 200 })
+);
+const assignedExplicitRoutes = [
     "/api/assigned_abstract",
     "/assigned_abstract",
     "/api/reviews/assigned",
     "/api/abstracts/assigned",
+    "/api/review/assigned",
+    "/review/assigned",
     "/api/assigned-abstract",
     "/assigned-abstract",
-    "/api/api/assigned_abstract",
 ];
-const assignedHandlers = assignedRoutes.map((path) =>
-    http.get(path, () => HttpResponse.json(assignedAbstractPayload, { status: 200 })),
+const assignedExplicitHandlers = assignedExplicitRoutes.map((path) =>
+    http.get(path, () => HttpResponse.json(assignedAbstractPayload, { status: 200 }))
 );
 
-// Submit review（多别名）
+// Submit review
 const submitRoutes = [
     "/api/submit_review",
     "/submit_review",
     "/api/reviews",
     "/api/reviews/submit",
     "/reviews/submit",
-    "/api/api/submit_review",
 ];
 const submitHandlers = submitRoutes.map((path) =>
-    http.post(path, () => HttpResponse.json({ ok: true }, { status: 200 })),
+    http.post(path, () => HttpResponse.json({ ok: true }, { status: 200 }))
 );
 
-// Pricing / Meta / Auth
-const pricingRoutes = [
-    "/api/review/pricing",
-    "/review/pricing",
-    "/api/api/review/pricing",
-];
+// Pricing
+const pricingRoutes = ["/api/review/pricing", "/review/pricing"];
 const pricingHandlers = pricingRoutes.map((path) =>
     http.get(path, ({ request }) => {
         const id = qs(request).get("abstract") || null;
         return HttpResponse.json({ abstract: id, price: 0 }, { status: 200 });
-    }),
+    })
 );
 
+// Auth / meta
 const authHandlers = [
-    http.post("/api/login", () => HttpResponse.json({ success: true, email: "test@user", is_admin: true }, { status: 200 })),
+    http.post("/api/login", () =>
+        HttpResponse.json({ success: true, email: "test@user", is_admin: true }, { status: 200 })
+    ),
     http.post("/api/logout", () => HttpResponse.json({ success: true }, { status: 200 })),
-    http.get("/api/whoami", () => HttpResponse.json({ success: true, email: "test@user", is_admin: true }, { status: 200 })),
+    http.get("/api/whoami", () =>
+        HttpResponse.json({ success: true, email: "test@user", is_admin: true }, { status: 200 })
+    ),
 ];
-
 const metaHandlers = [
     http.get("/api/meta/health", () => HttpResponse.json({ ok: true, env: "test" }, { status: 200 })),
     http.get("/api/meta/vocab", () => HttpResponse.json({ terms: [] }, { status: 200 })),
 ];
 
+// Export aggregated handlers in order: fallbacks first
 export const handlers = [
-    ...adminHandlers,
-    ...listHandlers,
-    ...createHandlers,
-    ...updateHandlers,
-    ...deleteHandlers,
-    ...assignedHandlers,
+    adminStatsFallback,
+    reviewerListFallback,
+    assignedFallback,
+
+    // explicit routes
+    ...createReviewerHandlers,
+    ...updateReviewerHandlers,
+    ...deleteReviewerHandlers,
+    ...assignedExplicitHandlers,
     ...submitHandlers,
     ...pricingHandlers,
     ...authHandlers,

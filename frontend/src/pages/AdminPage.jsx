@@ -35,9 +35,21 @@ function useAdminStats({ pollInterval = 0 } = {}) {
     setError("");
 
     try {
-      const data = await getAdminStats({ signal: abortRef.current.signal });
+      const res = await getAdminStats({ signal: abortRef.current.signal });
+      // 兼容：可能是 Response，需要再 json()
+      let body = res;
+      try {
+        if (res && typeof res.json === "function") body = await res.json();
+      } catch { }
+      // 兼容多形状：{data:{...}} | {stats:{...}} | 扁平 {...}
+      const data =
+        body?.data && typeof body.data === "object"
+          ? body.data
+          : body?.stats && typeof body.stats === "object"
+            ? body.stats
+            : body;
       if (reqIdRef.current !== id) return; // stale
-      setStats(data || {});
+      setStats((data && typeof data === "object") ? data : {});
       setLastUpdated(new Date());
     } catch (e) {
       if (reqIdRef.current !== id) return;

@@ -71,18 +71,23 @@ export default function ReviewerAdminPage() {
         setError("");
         try {
             const res = await fetchReviewers();
+            // 兼容 Response
+            let body = res;
+            try {
+                if (res && typeof res.json === "function") body = await res.json();
+            } catch { }
             if (reqIdRef.current !== id) return; // ignore stale
 
             let data = [];
-            if (res?.reviewers) {
-                data = res.reviewers;
-                setTotal(typeof res?.meta?.total === "number" ? res.meta.total : data.length);
-            } else if (Array.isArray(res)) {
-                data = res;
+            if (body?.reviewers) {
+                data = body.reviewers;
+                setTotal(typeof body?.meta?.total === "number" ? body.meta.total : data.length);
+            } else if (Array.isArray(body)) {
+                data = body;
                 setTotal(data.length);
-            } else if (res?.data?.reviewers) {
-                data = res.data.reviewers;
-                setTotal(res?.data?.meta?.total ?? data.length);
+            } else if (body?.data?.reviewers) {
+                data = body.data.reviewers;
+                setTotal(body?.data?.meta?.total ?? data.length);
             }
             setReviewers(Array.isArray(data) ? data : []);
         } catch (e) {
