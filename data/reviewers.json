@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "email": "asd@bristol.ac.uk",
+    "name": "asd",
+    "active": true,
+    "role": "reviewer",
+    "note": ""
+  }
+]

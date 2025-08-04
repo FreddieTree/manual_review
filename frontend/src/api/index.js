@@ -1,34 +1,30 @@
 // src/api/index.js
-import {
-    client,
-    request,
-    makeCancel,
-} from "./client";
-
 export * from "./auth";
-export * from "./meta";
 export * from "./pricing";
+export * from "./meta";
 export * from "./reviewers";
 export * from "./tasks";
 export * from "./admin";
 
-export { client, request, makeCancel };
+export { client, get, post, put, del, request, makeCancel } from "./client";
 
+// 也可以为使用 default import 保留一个平铺对象（可选）
 import * as auth from "./auth";
-import * as meta from "./meta";
 import * as pricing from "./pricing";
+import * as meta from "./meta";
 import * as reviewers from "./reviewers";
 import * as tasks from "./tasks";
 import * as admin from "./admin";
+import * as clientModule from "./client";
 
-export default {
-    client,
-    request,
-    makeCancel,
+const defaultExport = {
+    ...clientModule,
     ...auth,
-    ...meta,
     ...pricing,
+    ...meta,
     ...reviewers,
     ...tasks,
     ...admin,
 };
+
+export default defaultExport;

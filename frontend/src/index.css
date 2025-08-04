@@ -1,6 +1,4 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
 /* -----------------------------
    Design tokens (global)
@@ -143,12 +141,16 @@ a:hover, a:focus {
 /* -----------------------------
    Forms & inputs
    ----------------------------- */
-input, select, textarea, button {
+input, select, textarea {
   font-family: inherit;
   transition: var(--transition-base);
   background: none;
   border: none;
   outline: none;
+}
+button {
+  font-family: inherit;
+  transition: var(--transition-base);
 }
 input, select, textarea {
   background-color: var(--input-bg);

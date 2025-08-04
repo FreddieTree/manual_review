@@ -1,9 +1,10 @@
-// src/api/client.js
 import axios from "axios";
 
 const RAW_BASE = (import.meta.env.VITE_API_BASE || "").replace(/\/+$/, "");
-export const BASE_URL = RAW_BASE ? `${RAW_BASE}/api` : "/api";
-const LOGIN_PATH = (import.meta.env.VITE_LOGIN_PATH || "/").replace(/\/+$/, "") || "/";
+// Ensure baseURL ends without duplicate slashes; we want requests like "admin/stats" to become "/api/admin/stats"
+export const BASE_URL = RAW_BASE ? `${RAW_BASE.replace(/\/+$/, "")}/api` : "/api";
+const LOGIN_PATH =
+  (import.meta.env.VITE_LOGIN_PATH || "/").replace(/\/+$/, "") || "/";
 const isBrowser = typeof window !== "undefined";
 
 /** @type {import('axios').AxiosInstance} */
@@ -18,10 +19,18 @@ export const client = axios.create({
   },
 });
 
+// Optional: log request URLs for debugging (can be gated behind env if too verbose)
 client.interceptors.request.use((config) => {
   if ((config.method || "").toLowerCase() === "get") {
     config.headers["Cache-Control"] = "no-cache";
     config.headers.Pragma = "no-cache";
+  }
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.debug("[api client] request:", config.method, config.baseURL + "/" + (config.url || ""), {
+      params: config.params,
+      data: config.data,
+    });
   }
   return config;
 });
@@ -30,9 +39,9 @@ function handleAuthRequired(originalConfig) {
   if (!isBrowser) return;
 
   const here = window.location.pathname + window.location.search;
+  const fullUrl = ((originalConfig?.baseURL || "") + (originalConfig?.url || ""));
   const isLoginCall =
-    /\/api\/login$/.test(((originalConfig?.baseURL || "") + (originalConfig?.url || ""))) ||
-    /\/login$/.test(originalConfig?.url || "");
+    /\/api\/login$/.test(fullUrl) || /\/login$/.test(originalConfig?.url || "");
   if (isLoginCall) return;
 
   const evt = new CustomEvent("auth:required", { detail: { from: here } });
@@ -58,11 +67,12 @@ function buildError(err, fallback = "Network error") {
   }
 
   const e = new Error(message);
-  // @ts-expect-error augment
+  // augment for callers
+  // @ts-expect-error
   e.status = status;
-  // @ts-expect-error augment
+  // @ts-expect-error
   e.response = err?.response;
-  // @ts-expect-error augment
+  // @ts-expect-error
   e.config = err?.config;
   return e;
 }
@@ -78,15 +88,19 @@ client.interceptors.response.use(
   }
 );
 
+/**
+ * Unwrap standard API envelope:
+ * { success: boolean, data: ... } or raw object
+ */
 export function unwrapResponse(res, unwrap) {
   const body = res?.data;
 
   if (body && typeof body === "object" && Object.prototype.hasOwnProperty.call(body, "success")) {
     if (!body.success) {
       const e = new Error(body.message || "API error");
-      // @ts-expect-error augment
+      // @ts-expect-error
       e.status = res.status;
-      // @ts-expect-error augment
+      // @ts-expect-error
       e.payload = body;
       throw e;
     }
@@ -99,12 +113,16 @@ export function unwrapResponse(res, unwrap) {
   return body;
 }
 
+/**
+ * Generic call wrapper with retry/backoff.
+ * opts: { retries, unwrap }
+ */
 export async function call(fn, opts = {}) {
   const { retries = 1, unwrap = "data", _attempt = 0 } = opts;
 
   try {
     const res = await fn();
-    return /** @type {any} */ (unwrapResponse(res, unwrap));
+    return unwrapResponse(res, unwrap);
   } catch (err) {
     const status = err?.status ?? err?.response?.status ?? null;
     if (retries > 0 && (status === 429 || (status >= 500 && status < 600))) {
@@ -126,11 +144,11 @@ export function makeCancel() {
   };
 }
 
+// Exported helpers: callers MUST pass paths like "admin/stats" (no leading slash, no /api prefix)
 export const get = (url, config = {}, opts = {}) => call(() => client.get(url, config), opts);
 export const post = (url, data, config = {}, opts = {}) => call(() => client.post(url, data, config), opts);
 export const put = (url, data, config = {}, opts = {}) => call(() => client.put(url, data, config), opts);
 export const del = (url, config = {}, opts = {}) => call(() => client.delete(url, config), opts);
 
 export default client;
-
 export { call as request };

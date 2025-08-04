@@ -5,7 +5,7 @@ import plugin from "tailwindcss/plugin";
 
 export default {
   content: ["./index.html", "./src/**/*.{js,jsx,ts,tsx}"],
-  darkMode: ["class", "media"],
+  darkMode: "class",
   theme: {
     container: {
       center: true,

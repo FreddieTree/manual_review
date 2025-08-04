@@ -1,0 +1,136 @@
+// frontend/.eslintrc.cjs
+module.exports = {
+    root: true,
+    parser: "@typescript-eslint/parser",
+    parserOptions: {
+        ecmaVersion: 2024,
+        sourceType: "module",
+        ecmaFeatures: { jsx: true },
+        project: ["./tsconfig.json"],
+        warnOnUnsupportedTypeScriptVersion: false,
+    },
+    env: {
+        browser: true,
+        amd: true,
+        es2024: true,
+        node: true,
+    },
+    plugins: [
+        "react",
+        "react-hooks",
+        "jsx-a11y",
+        "unicorn",
+        "import",
+        "react-refresh",
+        "sort-exports",
+        "@typescript-eslint",
+    ],
+    extends: [
+        "eslint:recommended",
+        "plugin:react/recommended",
+        "plugin:react-hooks/recommended",
+        "plugin:jsx-a11y/recommended",
+        "plugin:unicorn/recommended",
+        "plugin:import/errors",
+        "plugin:import/warnings",
+        "plugin:import/typescript",
+        "plugin:react-refresh/recommended",
+        "plugin:@typescript-eslint/recommended",
+    ],
+    settings: {
+        react: { version: "detect" },
+        "import/resolver": { node: { extensions: [".js", ".jsx", ".ts", ".tsx"] } },
+    },
+    rules: {
+        // React / JSX
+        "react/react-in-jsx-scope": "off",
+        "react/prop-types": "off",
+        "react/self-closing-comp": "warn",
+        "react/jsx-key": "error",
+        "react/function-component-definition": [
+            "warn",
+            {
+                namedComponents: ["arrow-function", "function-declaration"],
+                unnamedComponents: ["arrow-function"],
+            },
+        ],
+        "react/jsx-props-no-spreading": "off",
+
+        // Hooks
+        "react-hooks/rules-of-hooks": "error",
+        "react-hooks/exhaustive-deps": ["warn"],
+
+        // General
+        "consistent-return": "error",
+        eqeqeq: ["warn", "always", { null: "ignore" }],
+        "no-console": ["warn", { allow: ["warn", "error", "info"] }],
+        "prefer-const": "error",
+        "no-implicit-coercion": ["warn", { boolean: false }],
+
+        // Unicorn
+        "unicorn/prevent-abbreviations": "off",
+        "unicorn/filename-case": ["error", { case: "kebabCase" }],
+        "unicorn/consistent-function-scoping": "off",
+        "unicorn/no-null": "off",
+        "unicorn/prefer-module": "off",
+        "unicorn/explicit-length-check": "warn",
+
+        // sort-exports
+        "sort-exports/sort-exports": [
+            "warn",
+            {
+                sortDir: "asc",
+                sortExportKindFirst: true,
+            },
+        ],
+
+        // Imports
+        "import/order": [
+            "error",
+            {
+                groups: [
+                    "builtin",
+                    "external",
+                    "internal",
+                    ["parent", "sibling", "index"],
+                    "object",
+                    "type",
+                ],
+                pathGroups: [
+                    { pattern: "react", group: "builtin", position: "before" },
+                    { pattern: "@/**", group: "internal" },
+                ],
+                pathGroupsExcludedImportTypes: ["react"],
+                "newlines-between": "always",
+                alphabetize: { order: "asc", caseInsensitive: true },
+            },
+        ],
+        "import/no-unresolved": ["error", { ignore: ["\\$"] }],
+        "import/no-duplicates": "error",
+        "import/newline-after-import": ["error", { count: 1 }],
+
+        // Accessibility
+        "jsx-a11y/anchor-is-valid": "warn",
+        "jsx-a11y/click-events-have-key-events": "error",
+        "jsx-a11y/no-noninteractive-element-interactions": "warn",
+        "jsx-a11y/label-has-associated-control": [
+            "warn",
+            { required: { some: ["nesting", "id"] } },
+        ],
+
+        // Variables
+        "no-unused-vars": [
+            "error",
+            { varsIgnorePattern: "^[A-Z_]", args: "after-used", ignoreRestSiblings: true },
+        ],
+        "@typescript-eslint/no-explicit-any": "warn",
+    },
+    overrides: [
+        {
+            files: ["*.config.js", "*.config.cjs", "*.config.mjs"],
+            rules: {
+                "unicorn/no-process-exit": "off",
+            },
+        },
+    ],
+};

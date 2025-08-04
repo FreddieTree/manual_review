@@ -1,9 +1,20 @@
-# backend/app.py
 import os
 import logging
+from collections.abc import Iterable
+from typing import Any
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
+
+
+def _compute_cors_origins(app_config: dict, extra_env: str) -> list[str]:
+    default_origins = {"http://localhost:5173", "http://127.0.0.1:5173"}
+    cfg_origins = set(app_config.get("CORS_ORIGINS", [])) if isinstance(app_config.get("CORS_ORIGINS", []), Iterable) else set()
+    if extra_env:
+        cfg_origins |= {o.strip() for o in extra_env.split(",") if o.strip()}
+    combined = sorted(default_origins | cfg_origins)
+    return combined
 
 
 def create_app() -> Flask:
@@ -13,7 +24,7 @@ def create_app() -> Flask:
     app.config.from_object("backend.config")
     app.secret_key = app.config.get("SECRET_KEY", "dev-secret")
 
-    # 信任一层反代
+    # === Proxy support ===
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
     # === Logging ===
@@ -27,12 +38,7 @@ def create_app() -> Flask:
     app.logger.setLevel(log_level)
 
     # === CORS ===
-    default_origins = {"http://localhost:5173", "http://127.0.0.1:5173"}
-    cfg_origins = set(app.config.get("CORS_ORIGINS", []))
-    env_extra = os.environ.get("ALLOWED_ORIGINS", "")
-    if env_extra:
-        cfg_origins |= {o.strip() for o in env_extra.split(",") if o.strip()}
-    origins = sorted(default_origins | cfg_origins)
+    origins = _compute_cors_origins(app.config, os.environ.get("ALLOWED_ORIGINS", ""))
     CORS(
         app,
         supports_credentials=True,
@@ -47,20 +53,19 @@ def create_app() -> Flask:
     from backend.routes.tasks import task_api
     from backend.routes.reviewers import reviewer_api
 
-    # 兼容 pricing 蓝图命名 (bp / pricing_api)
     try:
         from backend.routes.pricing import bp as pricing_api  # type: ignore
-    except Exception:
+    except ImportError:
         from backend.routes.pricing import pricing_api  # type: ignore
 
-    # 兼容 meta 蓝图命名 (bp / meta_api)
     try:
         from backend.routes.meta import bp as meta_api  # type: ignore
-    except Exception:
+    except ImportError:
         from backend.routes.meta import meta_api  # type: ignore
 
     from backend.routes.export import export_api
     from backend.routes.arbitration import arbitration_api, arbitration_compat_api
+    from backend.routes.admin import admin_api
 
     app.register_blueprint(auth_api)
     app.register_blueprint(task_api)
@@ -70,8 +75,9 @@ def create_app() -> Flask:
     app.register_blueprint(export_api)
     app.register_blueprint(arbitration_api)
     app.register_blueprint(arbitration_compat_api)
+    app.register_blueprint(admin_api)
 
-    # === 路由列表日志（首请求前打印一次） ===
+    # === Route logging (once) ===
     def _log_routes():
         app.logger.info("=== Registered routes ===")
         for rule in sorted(app.url_map.iter_rules(), key=lambda r: (r.rule, r.endpoint)):
@@ -80,58 +86,62 @@ def create_app() -> Flask:
         app.logger.info("=========================")
 
     if hasattr(app, "before_serving"):
-        app.before_serving(_log_routes)
+        app.before_serving(_log_routes)  # type: ignore
     else:
-        try:
-            app.before_first_request(_log_routes)
-        except Exception:
-            _logged = {"done": False}
+        _logged = {"done": False}
 
-            @app.before_request
-            def _maybe_log_once():
-                if not _logged["done"]:
-                    _log_routes()
-                    _logged["done"] = True
+        @app.before_request
+        def _maybe_log_once():
+            if not _logged["done"]:
+                _log_routes()
+                _logged["done"] = True
 
-    # === 每请求调试日志 + 安全响应头 ===
+    # === Per-request debug logging ===
     @app.before_request
     def _log_request():
         if app.logger.isEnabledFor(logging.DEBUG):
             app.logger.debug("Incoming %s %s from %s", request.method, request.path, request.remote_addr)
 
+    # === Security headers ===
     @app.after_request
     def _security_headers(resp):
-        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
-        resp.headers.setdefault("X-Frame-Options", "DENY")
-        resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        resp.headers.setdefault("Cross-Origin-Opener-Policy", "same-origin")
-        resp.headers.setdefault("Cross-Origin-Resource-Policy", "same-site")
+        headers = {
+            "X-Content-Type-Options": "nosniff",
+            "X-Frame-Options": "DENY",
+            "Referrer-Policy": "strict-origin-when-cross-origin",
+            "Cross-Origin-Opener-Policy": "same-origin",
+            "Cross-Origin-Resource-Policy": "same-site",
+        }
+        for k, v in headers.items():
+            resp.headers.setdefault(k, v)
         return resp
 
-    # 兜底健康检查（若 meta 蓝图缺失仍可用）
+    # === Health fallback ===
     @app.get("/api/meta/health")
     def _health():
         return jsonify({"success": True, "data": {"status": "ok"}}), 200
 
-    @app.errorhandler(404)
-    def _not_found(e):
-        return jsonify({"success": False, "message": "Not found", "path": request.path}), 404
+    # === Error handlers helpers ===
+    def _error_response(message: str, status: int, path: str | None = None):
+        payload: dict[str, Any] = {"success": False, "message": message}
+        if path:
+            payload["path"] = path
+        return jsonify(payload), status
 
-    @app.errorhandler(405)
-    def _method_not_allowed(e):
-        return jsonify({"success": False, "message": "Method not allowed", "path": request.path}), 405
+    app.register_error_handler(404, lambda e: _error_response("Not found", 404, request.path))
+    app.register_error_handler(405, lambda e: _error_response("Method not allowed", 405, request.path))
 
     @app.errorhandler(500)
     def _internal_error(e):
         app.logger.exception("Internal server error")
-        return jsonify({"success": False, "message": "Internal server error"}), 500
+        return _error_response("Internal server error", 500)
 
     @app.errorhandler(Exception)
     def _unhandled(e):
         app.logger.exception("Unhandled exception")
-        return jsonify({"success": False, "message": "Server error"}), 500
+        return _error_response("Server error", 500)
 
-    # 会话 Cookie 基础设置（可由 config 覆盖）
+    # === Session / JSON defaults ===
     app.config.setdefault("SESSION_COOKIE_NAME", "reviewer_session")
     app.config.setdefault("SESSION_COOKIE_SAMESITE", "Lax")
     app.config.setdefault(
@@ -144,6 +154,7 @@ def create_app() -> Flask:
     return app
 
 
+# 全局实例
 app = create_app()
 
 if __name__ == "__main__":

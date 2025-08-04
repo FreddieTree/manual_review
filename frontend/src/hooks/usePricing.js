@@ -1,16 +1,8 @@
-// src/hooks/usePricing.js
 import { useState, useEffect, useCallback, useRef } from "react";
-import { request } from "../api";
+import { getPricing } from "../api/pricing";
 
 /**
- * usePricing
- *  - 拉取并轮询 /api/review/pricing?abstract=<id>
- *  - 失败指数退避；页面隐藏时暂停轮询（可配置）
- *  - 支持 AbortController，避免竞态与内存泄漏
- *
- * @param {string} abstractId
- * @param {number} intervalSec 基础轮询间隔（秒）
- * @param {{ enabled?: boolean, pauseOnHidden?: boolean }} options
+ * usePricing：自动拉取并轮询 pricing，支持 pauseOnHidden
  */
 export function usePricing(abstractId, intervalSec = 15, options = {}) {
     const { enabled = true, pauseOnHidden = true } = options;
@@ -36,11 +28,7 @@ export function usePricing(abstractId, intervalSec = 15, options = {}) {
     const doFetch = useCallback(
         async ({ force = false } = {}) => {
             if (!enabled || !abstractId) return;
-
-            // 若同一 ID 且已有加载中且非强制，则跳过
             if (lastIdRef.current === abstractId && !force && loading) return;
-
-            // 取消上一次请求
             abortCtrlRef.current?.abort();
             const controller = new AbortController();
             abortCtrlRef.current = controller;
@@ -49,18 +37,22 @@ export function usePricing(abstractId, intervalSec = 15, options = {}) {
             setError(null);
 
             try {
-                const data = await request({
-                    method: "GET",
-                    url: "/review/pricing",
-                    params: { abstract: abstractId }, // 后端期望参数名为 abstract/abstractId/pmid
-                    signal: controller.signal,
-                });
+                const data = await getPricing(abstractId, { signal: controller.signal });
+                // 关键 debug！
                 if (!mountedRef.current) return;
                 setPricing(data);
                 setIsStale(false);
                 backoffRef.current = 0;
                 lastIdRef.current = abstractId;
             } catch (e) {
+                // 忽略因请求被 cancel（abort）导致的错误
+                if (
+                    (e && e.message && e.message.toLowerCase().includes("cancel")) ||
+                    (e && e.name === "CanceledError")
+                ) {
+                    // 直接 return，不 setError
+                    return;
+                }
                 if (!mountedRef.current) return;
                 backoffRef.current = Math.min(backoffRef.current + 1, 5);
                 setError(e);
@@ -70,13 +62,11 @@ export function usePricing(abstractId, intervalSec = 15, options = {}) {
                 setLoading(false);
             }
         },
-        [abstractId, enabled] // 故意不把 pricing 放依赖，避免循环触发
+        [abstractId, enabled]
     );
 
-    // 轮询调度（指数退避），可在页面隐藏时暂停
     useEffect(() => {
         mountedRef.current = true;
-
         const shouldRun = enabled && Boolean(abstractId);
         if (!shouldRun) {
             clearTimer();
@@ -85,11 +75,9 @@ export function usePricing(abstractId, intervalSec = 15, options = {}) {
                 abortCtrlRef.current?.abort();
             };
         }
-
         const isHidden = () => document.visibilityState === "hidden";
         const schedule = () => {
             if (!mountedRef.current) return;
-            // 页面隐藏时暂停轮询（可选）
             if (pauseOnHidden && isHidden()) {
                 timerRef.current = setTimeout(schedule, 1000);
                 return;
@@ -101,14 +89,10 @@ export function usePricing(abstractId, intervalSec = 15, options = {}) {
                 schedule();
             }, delayMs);
         };
-
-        // 首次拉取
         doFetch({ force: true });
         schedule();
-
         const visHandler = () => {
             if (!pauseOnHidden) return;
-            // 切回可见时立即刷新
             if (document.visibilityState === "visible") {
                 clearTimer();
                 doFetch({ force: true });
@@ -116,7 +100,6 @@ export function usePricing(abstractId, intervalSec = 15, options = {}) {
             }
         };
         document.addEventListener("visibilitychange", visHandler);
-
         return () => {
             mountedRef.current = false;
             document.removeEventListener("visibilitychange", visHandler);

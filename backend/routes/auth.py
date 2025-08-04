@@ -1,33 +1,32 @@
-# backend/routes/auth.py
 from __future__ import annotations
 
 import time
 from functools import wraps
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from flask import Blueprint, request, session, jsonify, current_app, make_response
 
-from ..config import ADMIN_EMAIL, ADMIN_NAME, EMAIL_ALLOWED_DOMAINS
-from ..utils import is_valid_email
-from ..services.assignment import assign_abstract_to_reviewer, release_assignment
-from ..models.reviewers import get_reviewer_by_email
-from ..models.logs import log_review_action, get_stats_for_reviewer
+from backend.config import ADMIN_EMAIL, ADMIN_NAME, EMAIL_ALLOWED_DOMAINS
+from backend.utils import is_valid_email
+from backend.services.assignment import assign_abstract_to_reviewer, release_assignment
+from backend.models.reviewers import get_reviewer_by_email
+from backend.models.logs import log_review_action, get_stats_for_reviewer
 
 auth_api = Blueprint("auth_api", __name__, url_prefix="/api")
 
 
 def standard_response(success: bool = True, **kwargs):
-    """只构造 JSON 体，状态码由视图决定。"""
+    """统一 JSON 结构体（不负责状态码）。"""
     payload = {"success": success}
     payload.update(kwargs)
     return jsonify(payload)
 
 
-# ---- In-memory rate limiting (swap to Redis in prod) ----
+# ---- In-memory rate limiting (可替换为 Redis/外部) ----
 _LOGIN_ATTEMPTS: Dict[str, Dict[str, Any]] = {}
-LOCKOUT_THRESHOLD = 5       # 窗口内失败次数
-LOCKOUT_WINDOW = 60         # 秒
-COOLDOWN_SECONDS = 120      # 锁定时长
+LOCKOUT_THRESHOLD = 5  # 窗口内失败次数
+LOCKOUT_WINDOW = 60  # 秒
+COOLDOWN_SECONDS = 120  # 锁定时长
 
 
 def rate_limit_login(f):
@@ -42,9 +41,7 @@ def rate_limit_login(f):
         entry = _LOGIN_ATTEMPTS.get(key, {"attempts": [], "locked_until": 0})
         if entry.get("locked_until", 0) > now:
             retry_after = int(entry["locked_until"] - now)
-            current_app.logger.warning(
-                "Rate limit triggered for %s retry_after=%ss", key, retry_after
-            )
+            current_app.logger.warning("Rate limit active for %s, retry_after=%ss", key, retry_after)
             resp = make_response(
                 standard_response(
                     False,
@@ -58,27 +55,24 @@ def rate_limit_login(f):
             resp.headers["Retry-After"] = str(retry_after)
             return resp
 
-        # 调用真正的视图
         result = f(*args, **kwargs)
 
-        # 规范化返回值
+        # 解析返回值（可能是 tuple 或 flask response）
         if isinstance(result, tuple):
             resp_obj, status = result[0], result[1]
         else:
             resp_obj = result
             status = getattr(resp_obj, "status_code", 200)
 
-        # 判定登录是否成功
+        # 判断是否成功登录
         is_success = False
         try:
             body = resp_obj.get_json() if hasattr(resp_obj, "get_json") else {}
             is_success = bool(body.get("success", False)) and status == 200
         except Exception:
-            # 兜底：若状态码为 200 也认为成功
             is_success = status == 200
 
         if not is_success:
-            # 记录失败
             recent = [t for t in entry.get("attempts", []) if now - t < LOCKOUT_WINDOW]
             recent.append(now)
             entry["attempts"] = recent
@@ -86,7 +80,6 @@ def rate_limit_login(f):
                 entry["locked_until"] = now + COOLDOWN_SECONDS
             _LOGIN_ATTEMPTS[key] = entry
         else:
-            # 成功则清除
             _LOGIN_ATTEMPTS.pop(key, None)
 
         return resp_obj, status
@@ -100,7 +93,6 @@ ADMIN_LIKE_LOCALPARTS = {"admin", "administrator", "root"}
 
 
 def _looks_like_admin_email(email: str) -> bool:
-    """当 reviewer 不存在时，这些邮箱可作为管理员兜底登录。"""
     try:
         local, _, domain = email.partition("@")
         if not local or not domain:
@@ -153,9 +145,8 @@ def api_login():
     name = (data.get("name") or "").strip()
     email = (data.get("email") or "").strip().lower()
 
-    current_app.logger.debug("LOGIN name=%r email=%r", name, email)
+    current_app.logger.debug("LOGIN attempt name=%r email=%r", name, email)
 
-    # 基础校验（可限制域名）
     if not name or not is_valid_email(
         email,
         restrict_domain=bool(EMAIL_ALLOWED_DOMAINS),
@@ -163,21 +154,20 @@ def api_login():
     ):
         return standard_response(False, message="Invalid name or email"), 400
 
-    # 1) 强匹配 ADMIN_EMAIL（若配置）
+    # 1) 精确匹配 admin email
     if ADMIN_EMAIL and email == ADMIN_EMAIL:
         session.clear()
         session.update({"name": name or ADMIN_NAME or "", "email": email, "is_admin": True})
         session.permanent = True
         _log_login(email, name or (ADMIN_NAME or ""), True)
-        current_app.logger.info("Admin login success (ADMIN_EMAIL): %s", email)
+        current_app.logger.info("Admin login via ADMIN_EMAIL: %s", email)
         return standard_response(True, is_admin=True), 200
 
-    # 2) reviewer 登录（优先于“管理员兜底”，避免把正常 reviewer 错误地当 admin）
+    # 2) reviewer 登录
     reviewer = get_reviewer_by_email(email)
     if reviewer:
-        # 基本状态检查
         if not reviewer.get("active", True):
-            current_app.logger.warning("Reviewer inactive: %s", email)
+            current_app.logger.warning("Inactive reviewer attempted login: %s", email)
             return standard_response(False, message="Not a valid reviewer account."), 403
 
         role = (reviewer.get("role") or "reviewer").strip().lower()
@@ -186,7 +176,7 @@ def api_login():
             current_app.logger.warning("Reviewer name mismatch: %s != %s", name, display_name)
             return standard_response(False, message="Not a valid reviewer account."), 403
 
-        is_admin = (role == "admin")
+        is_admin = role == "admin"
         session.clear()
         session.update({"name": name or display_name, "email": email, "is_admin": is_admin})
         session.permanent = True
@@ -194,11 +184,9 @@ def api_login():
         _log_login(email, name or display_name, is_admin)
 
         if is_admin:
-            # 管理员 reviewer：不分配摘要
             current_app.logger.info("Admin reviewer login: %s", email)
             return standard_response(True, is_admin=True), 200
 
-        # 普通 reviewer：进行分配
         assigned = None
         try:
             assigned = assign_abstract_to_reviewer(email, name or display_name)
@@ -223,9 +211,9 @@ def api_login():
         try:
             stats = get_stats_for_reviewer(email)
         except Exception:
-            current_app.logger.debug("Could not fetch reviewer stats for %s", email)
+            current_app.logger.debug("Failed to get reviewer stats for %s", email)
 
-        current_app.logger.info("Reviewer login+assignment: %s -> %s", email, assigned)
+        current_app.logger.info("Reviewer login + assignment: %s -> %s", email, assigned)
         return (
             standard_response(
                 True,
@@ -236,17 +224,16 @@ def api_login():
             200,
         )
 
-    # 3) 管理员兜底：reviewer 不存在，且邮箱形态看起来是管理员
+    # 3) 管理员兜底（localpart fallback）
     if _looks_like_admin_email(email):
         session.clear()
         session.update({"name": name, "email": email, "is_admin": True})
         session.permanent = True
         _log_login(email, name, True)
-        current_app.logger.info("Admin login success (fallback by domain/local): %s", email)
+        current_app.logger.info("Admin login via fallback: %s", email)
         return standard_response(True, is_admin=True), 200
 
-    # 4) 否则拒绝
-    current_app.logger.warning("Reviewer not found: %s", email)
+    current_app.logger.warning("Login rejected, reviewer not found: %s", email)
     return standard_response(False, message="Not a valid reviewer account."), 403
 
 
@@ -259,9 +246,7 @@ def api_logout():
         try:
             release_assignment(email=email, pmid=str(pmid))
         except Exception:
-            current_app.logger.debug(
-                "Failed to release assignment pmid=%s for %s", pmid, email
-            )
+            current_app.logger.debug("Failed to release assignment for %s", email)
 
     _log_logout(email)
     session.clear()
@@ -277,7 +262,7 @@ def api_whoami():
     name = session.get("name")
     is_admin = bool(session.get("is_admin", False))
 
-    stats: Dict[str, Any] = {}
+    stats = {}
     if not is_admin:
         try:
             stats = get_stats_for_reviewer(email)

@@ -1,7 +1,8 @@
 // tests/frontend/msw/handlers.ts
 import { http, HttpResponse } from "msw";
 
-/** In-memory DB for tests */
+/** ───────────────────────── In-memory DB for tests ───────────────────────── */
+
 type Reviewer = {
     name: string;
     email: string;
@@ -23,6 +24,7 @@ type AdminStats = {
     last_export?: string | null;
 };
 
+// Mutable in-memory state
 let reviewers: Reviewer[] = [
     { name: "Alice", email: "alice@bristol.ac.uk", role: "reviewer", active: true, note: "" },
     { name: "Bob", email: "bob@bristol.ac.uk", role: "admin", active: false, note: "on leave" },
@@ -41,6 +43,7 @@ let adminStats: AdminStats = {
     last_export: "2025-06-01 10:00",
 };
 
+/** Assigned abstract fixtures (supports both flattened and nested) */
 const assignedAbstract = {
     pmid: "12345",
     title: "Sample title for testing",
@@ -51,7 +54,14 @@ const assignedAbstract = {
         {
             sentence_index: 1,
             sentence: "This is a sample sentence one.",
-            assertions: [{ id: "a1", text: "Gene A upregulates Gene B", comment: "", is_new: true }],
+            assertions: [
+                {
+                    id: "a1",
+                    text: "Gene A upregulates Gene B",
+                    comment: "",
+                    is_new: true, // 关键：标记新增
+                },
+            ],
         },
         {
             sentence_index: 2,
@@ -66,7 +76,7 @@ const assignedAbstractPayload = {
     ...assignedAbstract,
 };
 
-// Reset helper
+/** Reset helpers for tests */
 export function resetDb() {
     reviewers = [
         { name: "Alice", email: "alice@bristol.ac.uk", role: "reviewer", active: true, note: "" },
@@ -86,7 +96,8 @@ export function resetDb() {
     };
 }
 
-/** Utils */
+/** ───────────────────────── Utility helpers ───────────────────────── */
+
 const normEmail = (s: string) => s.trim().toLowerCase();
 const qs = (req: Request) => new URL(req.url).searchParams;
 
@@ -102,7 +113,8 @@ function parseListParams(req: Request) {
     return { q, page, per, offset };
 }
 
-/** Response builders */
+/** ───────────────────────── Response builders ───────────────────────── */
+
 function buildAdminStatsBody() {
     let ratio: number | null = null;
     if (typeof adminStats.reviewed_ratio === "number") {
@@ -114,10 +126,11 @@ function buildAdminStatsBody() {
     ) {
         ratio = Math.round((adminStats.reviewed_count / adminStats.total_abstracts) * 1000) / 10;
     }
+
     const plain = {
         ...adminStats,
         reviewed_ratio: ratio,
-        // camelCase variants
+        // camelCase variants for compatibility
         totalAbstracts: adminStats.total_abstracts,
         totalReviewers: adminStats.total_reviewers,
         reviewedCount: adminStats.reviewed_count,
@@ -125,19 +138,20 @@ function buildAdminStatsBody() {
         arbitrationCount: adminStats.arbitration_count,
         lastExport: adminStats.last_export,
     };
+
     return { success: true, data: plain, meta: { ok: true }, ...plain };
 }
 
-/** Handlers */
+/** ────────────────────────── Handlers ────────────────────────── */
 
-// Admin stats fallback (covers many variants)
+/* Admin stats fallback: cover many path variants like /api/admin/stats, /admin/overview, /stats, etc. */
 const adminStatsRegex =
     /\/(api\/)?(v\d+\/)?(admin\/)?(stats|overview|dashboard|metrics|summary|status)\/?$/i;
 const adminStatsFallback = http.get(adminStatsRegex, () =>
     HttpResponse.json(buildAdminStatsBody(), { status: 200 })
 );
 
-// Reviewers list fallback
+/* Reviewers list fallback: covers /reviewers, /admin/reviewers, /users, with or without versioning */
 const reviewerListRegex = /\/(api\/)?(v\d+\/)?(admin\/)?(reviewers|users)(\/list)?\/?$/i;
 const reviewerListFallback = http.get(reviewerListRegex, ({ request }) => {
     const { q, per, offset } = parseListParams(request);
@@ -145,8 +159,7 @@ const reviewerListFallback = http.get(reviewerListRegex, ({ request }) => {
     if (q) {
         data = data.filter(
             (r) =>
-                (r.name || "").toLowerCase().includes(q) ||
-                (r.email || "").toLowerCase().includes(q)
+                (r.name || "").toLowerCase().includes(q) || (r.email || "").toLowerCase().includes(q)
         );
     }
     const total = data.length;
@@ -154,58 +167,67 @@ const reviewerListFallback = http.get(reviewerListRegex, ({ request }) => {
     return HttpResponse.json({ reviewers: pageData, meta: { total }, total }, { status: 200 });
 });
 
-// Create / update / delete reviewers
+/* Create reviewer (multiple aliases) */
 const createReviewerRoutes = [
     "/api/reviewers",
     "/reviewers",
     "/api/admin/reviewers",
     "/admin/reviewers",
+    "/api/api/reviewers",
 ];
 const createReviewerHandlers = createReviewerRoutes.map((path) =>
     http.post(path, async ({ request }) => {
-        let body: any = {};
-        try {
-            body = await request.json();
-        } catch { }
-        const name = String(body?.name || "").trim();
-        const email = normEmail(String(body?.email || ""));
+        const rawBody = await request.json().catch(() => ({}));
+        const body = (rawBody ?? {}) as { name?: unknown; email?: unknown; role?: unknown };
+
+        const name = String(body.name || "").trim();
+        const email = normEmail(String(body.email || ""));
         if (!name || !email) {
             return HttpResponse.json({ message: "name and email are required" }, { status: 400 });
         }
         if (reviewers.some((r) => normEmail(r.email) === email)) {
             return HttpResponse.json({ message: "email exists" }, { status: 422 });
         }
+
         reviewers.push({
             name,
             email,
-            role: body?.role === "admin" ? "admin" : "reviewer",
+            role: body.role === "admin" ? "admin" : "reviewer",
             active: true,
             note: "",
         });
         adminStats.total_reviewers = (adminStats.total_reviewers || 0) + 1;
         adminStats.new_reviewers = (adminStats.new_reviewers || 0) + 1;
+
         return HttpResponse.json({ ok: true }, { status: 201 });
     })
 );
+
+/* Update reviewer */
 const updateReviewerRoutes = [
     "/api/reviewers/:email",
     "/reviewers/:email",
     "/api/admin/reviewers/:email",
     "/admin/reviewers/:email",
+    "/api/api/reviewers/:email",
 ];
 const updateReviewerHandlers = updateReviewerRoutes.map((path) =>
     http.put(path, async ({ params, request }) => {
         const target = normEmail(decodeURIComponent(String(params.email || "")));
         const idx = reviewers.findIndex((r) => normEmail(r.email) === target);
-        if (idx < 0) return HttpResponse.json({ message: "not found" }, { status: 404 });
-        let body: Partial<Reviewer> = {};
-        try {
-            body = await request.json();
-        } catch { }
+        if (idx < 0) {
+            return HttpResponse.json({ message: "not found" }, { status: 404 });
+        }
+
+        const rawBody = await request.json().catch(() => ({}));
+        const body = (rawBody ?? {}) as Partial<Reviewer>;
+
         reviewers[idx] = { ...reviewers[idx], ...body, email: reviewers[idx].email };
         return HttpResponse.json({ ok: true }, { status: 200 });
     })
 );
+
+/* Delete reviewer */
 const deleteReviewerHandlers = updateReviewerRoutes.map((path) =>
     http.delete(path, ({ params }) => {
         const target = normEmail(decodeURIComponent(String(params.email || "")));
@@ -218,7 +240,7 @@ const deleteReviewerHandlers = updateReviewerRoutes.map((path) =>
     })
 );
 
-// Assigned abstract (fallback + explicit)
+/* Assigned abstract: fallback and explicit variants */
 const assignedRegex =
     /\/(api\/)?(v\d+\/)?((reviews?|abstracts?|review)\/assigned|assigned[_-]?abstract)\/?$/i;
 const assignedFallback = http.get(assignedRegex, () =>
@@ -233,25 +255,27 @@ const assignedExplicitRoutes = [
     "/review/assigned",
     "/api/assigned-abstract",
     "/assigned-abstract",
+    "/api/api/assigned_abstract",
 ];
 const assignedExplicitHandlers = assignedExplicitRoutes.map((path) =>
     http.get(path, () => HttpResponse.json(assignedAbstractPayload, { status: 200 }))
 );
 
-// Submit review
+/* Submit review: multiple aliases */
 const submitRoutes = [
     "/api/submit_review",
     "/submit_review",
     "/api/reviews",
     "/api/reviews/submit",
     "/reviews/submit",
+    "/api/api/submit_review",
 ];
 const submitHandlers = submitRoutes.map((path) =>
     http.post(path, () => HttpResponse.json({ ok: true }, { status: 200 }))
 );
 
-// Pricing
-const pricingRoutes = ["/api/review/pricing", "/review/pricing"];
+/* Pricing / meta helpers */
+const pricingRoutes = ["/api/review/pricing", "/review/pricing", "/api/api/review/pricing"];
 const pricingHandlers = pricingRoutes.map((path) =>
     http.get(path, ({ request }) => {
         const id = qs(request).get("abstract") || null;
@@ -259,7 +283,7 @@ const pricingHandlers = pricingRoutes.map((path) =>
     })
 );
 
-// Auth / meta
+/* Auth endpoints */
 const authHandlers = [
     http.post("/api/login", () =>
         HttpResponse.json({ success: true, email: "test@user", is_admin: true }, { status: 200 })
@@ -269,18 +293,21 @@ const authHandlers = [
         HttpResponse.json({ success: true, email: "test@user", is_admin: true }, { status: 200 })
     ),
 ];
+
+/* Meta endpoints */
 const metaHandlers = [
     http.get("/api/meta/health", () => HttpResponse.json({ ok: true, env: "test" }, { status: 200 })),
     http.get("/api/meta/vocab", () => HttpResponse.json({ terms: [] }, { status: 200 })),
 ];
 
-// Export aggregated handlers in order: fallbacks first
+/** ───────────────────────── Aggregate export (fallbacks first) ───────────────────────── */
 export const handlers = [
+    // fallbacks / regex routes early so they don't get accidentally shadowed
     adminStatsFallback,
     reviewerListFallback,
     assignedFallback,
 
-    // explicit routes
+    // explicit CRUD + named endpoints
     ...createReviewerHandlers,
     ...updateReviewerHandlers,
     ...deleteReviewerHandlers,

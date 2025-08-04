@@ -1,18 +1,56 @@
-import React, { useMemo, useCallback, forwardRef, memo } from "react";
+import React, { useCallback, forwardRef, memo } from "react";
 import clsx from "clsx";
 import Tooltip from "./ui/Tooltip";
 import Button from "./ui/Button";
 import PropTypes from "prop-types";
 import { usePricing } from "../hooks/usePricing";
 
-/**
- * PricingDisplay
- * - 清晰层级：主金额、每句金额
- * - 无障碍：tooltip、loading/错误状态
- * - 健壮：区分无数据与 0
- */
-function PricingDisplayImpl({ abstractId, compact = false, showTooltip = true, onRetry, className = "" }, ref) {
-    const { pricing, loading, error, refetch } = usePricing(abstractId, 10);
+const normalizePricing = (raw) => {
+    if (!raw || typeof raw !== "object") {
+        return { total: null, per_sentence: null, currency: "GBP", extra: null };
+    }
+    const { total, currency, units, per_abstract, per_assertion_add, default_descriptor } = raw;
+
+    if (per_abstract !== undefined) {
+        // 默认计价，未指定具体摘要
+        return {
+            total: null,
+            per_sentence: null,
+            currency: currency || "GBP",
+            extra: {
+                per_abstract,
+                per_assertion_add,
+                default_descriptor: default_descriptor || null,
+            },
+        };
+    }
+    // 具体计价，units 结构如 { sentences: X, abstracts: Y }
+    let per_sentence = null;
+    if (units?.sentences && total != null) {
+        per_sentence = total / units.sentences;
+    }
+    return {
+        total,
+        per_sentence,
+        currency: currency || "GBP",
+        extra: null,
+    };
+};
+
+function PricingDisplayImpl(
+    { abstractId, compact = false, showTooltip = true, onRetry, className = "" },
+    ref
+) {
+    const { pricing: rawPricing, loading, error, refetch, isStale } = usePricing(abstractId, 10, {
+        enabled: Boolean(abstractId),
+        pauseOnHidden: true,
+    });
+
+    const pricing = normalizePricing(rawPricing || {});
+
+    if (error) {
+        console.log("Pricing error object:", error, typeof error, error?.response);
+    }
 
     const handleRetry = useCallback(() => {
         if (loading) return;
@@ -40,14 +78,15 @@ function PricingDisplayImpl({ abstractId, compact = false, showTooltip = true, o
     const total = pricing?.total;
     const perSentence = pricing?.per_sentence;
     const formattedTotal = total != null ? formatMoney(total) : "—";
-    const formattedPerSentence = perSentence != null ? `${formatMoney(perSentence)} / sentence` : null;
+    const formattedPerSentence =
+        perSentence != null ? `${formatMoney(perSentence)} / sentence` : null;
 
     const containerBase = clsx(
         "relative flex rounded-2xl px-4 py-2 shadow-sm border transition font-sans min-w-[140px] overflow-hidden",
         className
     );
 
-    // Loading skeleton
+    // Loading
     if (loading) {
         return (
             <div
@@ -78,8 +117,13 @@ function PricingDisplayImpl({ abstractId, compact = false, showTooltip = true, o
         );
     }
 
-    // Error
+    // Error (含 stale)
     if (error) {
+        const msg =
+            error?.message ||
+            error?.toString() ||
+            "Failed to load pricing";
+
         return (
             <div
                 ref={ref}
@@ -93,14 +137,30 @@ function PricingDisplayImpl({ abstractId, compact = false, showTooltip = true, o
                 )}
             >
                 <div className="flex flex-1 flex-col gap-1">
-                    <div className="text-[10px] uppercase tracking-wide font-medium text-red-700">Estimated pay</div>
+                    <div className="text-[10px] uppercase tracking-wide font-medium text-red-700">
+                        Estimated pay
+                    </div>
                     <div className="flex items-baseline gap-1">
                         <div className="font-bold text-red-700">Error</div>
-                        {!compact && <div className="ml-1 text-[11px] text-red-600">Could not load</div>}
+                        {!compact && (
+                            <div className="ml-1 text-[11px] text-red-600 truncate">{msg}</div>
+                        )}
                     </div>
+                    {isStale && (
+                        <div className="text-[10px] text-yellow-700 mt-1">
+                            Showing stale data; retry to refresh.
+                        </div>
+                    )}
                 </div>
                 <div className="flex gap-2 items-center flex-shrink-0 mt-1">
-                    <Button size="sm" variant="secondary" onClick={handleRetry} aria-label="Retry pricing" className="rounded-full" disabled={loading}>
+                    <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={handleRetry}
+                        aria-label="Retry pricing"
+                        className="rounded-full"
+                        disabled={loading}
+                    >
                         Retry
                     </Button>
                 </div>
@@ -117,16 +177,20 @@ function PricingDisplayImpl({ abstractId, compact = false, showTooltip = true, o
                 containerBase,
                 compact ? "items-center gap-2" : "flex-col text-right gap-1",
                 "rounded-3xl",
-                pricing ? "bg-white border-green-100" : "bg-gray-50 border-gray-200",
+                pricing?.total != null ? "bg-white border-green-100" : "bg-gray-50 border-gray-200",
                 compact ? "min-w-[140px]" : "max-w-[260px]"
             )}
         >
             <div className={clsx("flex flex-col", compact ? "items-start" : "items-end", "flex-1")}>
                 <div className="text-[10px] uppercase text-gray-500 tracking-wide">Estimated pay</div>
                 <div className="flex items-baseline gap-1">
-                    <div className={clsx("font-extrabold", compact ? "text-sm" : "text-2xl", "leading-tight")}>{formattedTotal}</div>
+                    <div className={clsx("font-extrabold leading-tight", compact ? "text-sm" : "text-2xl")}>
+                        {formattedTotal}
+                    </div>
                     {!compact && formattedPerSentence && (
-                        <div className="ml-1 text-[11px] text-gray-500 whitespace-nowrap">{formattedPerSentence}</div>
+                        <div className="ml-1 text-[11px] text-gray-500 whitespace-nowrap">
+                            {formattedPerSentence}
+                        </div>
                     )}
                 </div>
             </div>
@@ -145,7 +209,7 @@ function PricingDisplayImpl({ abstractId, compact = false, showTooltip = true, o
                                     {pricing?.extra && (
                                         <div className="flex justify-between mt-1">
                                             <span className="mr-2">Extras:</span>
-                                            <span>{pricing.extra}</span>
+                                            <span>{JSON.stringify(pricing.extra)}</span>
                                         </div>
                                     )}
                                     <div className="border-t pt-1 mt-1 flex justify-between font-semibold">
@@ -159,16 +223,22 @@ function PricingDisplayImpl({ abstractId, compact = false, showTooltip = true, o
                         }
                         placement="bottom"
                     >
-                        <div aria-label="Pricing info" className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-gray-700 text-[12px] font-semibold cursor-help">
+                        <div
+                            aria-label="Pricing info"
+                            className="flex items-center justify-center w-6 h-6 rounded-full bg-gray-100 text-gray-700 text-[12px] font-semibold cursor-help"
+                        >
                             i
                         </div>
                     </Tooltip>
                 </div>
             )}
 
-            {/* quick refresh */}
             <div className="absolute top-2 right-2">
-                <button aria-label="Refresh pricing" onClick={handleRetry} className="text-[11px] text-gray-400 hover:text-gray-600 transition">
+                <button
+                    aria-label="Refresh pricing"
+                    onClick={handleRetry}
+                    className="text-[11px] text-gray-400 hover:text-gray-600 transition"
+                >
                     ⟳
                 </button>
             </div>
