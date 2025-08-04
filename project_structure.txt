@@ -1,4 +1,5 @@
 .
+├── .coverage
 ├── .DS_Store
 ├── .gitignore
 ├── .ipynb_checkpoints
@@ -9,34 +10,99 @@
 │   ├── requirements-checkpoint.txt
 │   ├── task_manager-checkpoint.py
 │   └── utils-checkpoint.py
+├── .pytest_cache
+│   ├── .gitignore
+│   ├── CACHEDIR.TAG
+│   ├── README.md
+│   └── v
+│       └── cache
+│           ├── lastfailed
+│           └── nodeids
 ├── .vscode
 │   └── settings.json
-├── aggregate.py
-├── app.py
-├── arbitration.py
-├── assertion_utils.py
+├── backend
+│   ├── __init__.py
+│   ├── app.py
+│   ├── config.py
+│   ├── domain
+│   │   └── assertions.py
+│   ├── models
+│   │   ├── abstracts.py
+│   │   ├── logs.py
+│   │   └── reviewers.py
+│   ├── routes
+│   │   ├── __init__.py
+│   │   ├── admin.py
+│   │   ├── arbitration.py
+│   │   ├── auth.py
+│   │   ├── export.py
+│   │   ├── meta.py
+│   │   ├── pricing.py
+│   │   ├── reviewers.py
+│   │   └── tasks.py
+│   ├── schemas
+│   ├── services
+│   │   ├── aggregation.py
+│   │   ├── arbitration.py
+│   │   ├── assignment.py
+│   │   ├── audit.py
+│   │   ├── pricing.py
+│   │   ├── stats.py
+│   │   └── vocab.py
+│   ├── templates
+│   ├── utils
+│   │   └── __init__.py
+│   └── wsgi.py
 ├── bfg.jar
-├── config.py
 ├── data
 │   ├── exports
+│   │   └── final_consensus.jsonl
 │   ├── review_logs.jsonl
 │   ├── reviewers.json
 │   └── sentence_level_gpt4.1.jsonl
 ├── environment.yml
-├── export.py
 ├── frontend
 │   ├── .DS_Store
+│   ├── .eslintrc.cjs.bak
 │   ├── .gitignore
 │   ├── .ipynb_checkpoints
+│   ├── coverage
+│   │   ├── base.css
+│   │   ├── block-navigation.js
+│   │   ├── favicon.png
+│   │   ├── frontend
+│   │   │   ├── eslint.config.js.html
+│   │   │   ├── index.html
+│   │   │   ├── postcss.config.mjs.html
+│   │   │   ├── src
+│   │   │   │   ├── .ipynb_checkpoints
+│   │   │   │   ├── api
+│   │   │   │   ├── App.jsx.html
+│   │   │   │   ├── components
+│   │   │   │   ├── design-tokens.js.html
+│   │   │   │   ├── hooks
+│   │   │   │   ├── index.html
+│   │   │   │   ├── main.jsx.html
+│   │   │   │   ├── pages
+│   │   │   │   ├── utils.js.html
+│   │   │   │   └── vite-env.d.ts.html
+│   │   │   ├── tailwind.config.mjs.html
+│   │   │   ├── vite.config.js.html
+│   │   │   └── vitest.config.ts.html
+│   │   ├── index.html
+│   │   ├── prettify.css
+│   │   ├── prettify.js
+│   │   ├── sort-arrow-sprite.png
+│   │   └── sorter.js
+│   ├── eslint-report.json
 │   ├── eslint.config.js
+│   ├── frontend@0.0.0
 │   ├── index.html
 │   ├── package-lock.json
 │   ├── package.json
 │   ├── postcss.config.mjs
 │   ├── public
 │   ├── README.md
-│   ├── scipts
-│   │   └── generate-css-variables.js
 │   ├── src
 │   │   ├── .DS_Store
 │   │   ├── .ipynb_checkpoints
@@ -46,8 +112,14 @@
 │   │   │   ├── index-checkpoint.js
 │   │   │   └── main-checkpoint.jsx
 │   │   ├── api
-│   │   │   └── index.js
-│   │   ├── api.js
+│   │   │   ├── admin.js
+│   │   │   ├── auth.js
+│   │   │   ├── client.js
+│   │   │   ├── index.js
+│   │   │   ├── meta.js
+│   │   │   ├── pricing.js
+│   │   │   ├── reviewers.js
+│   │   │   └── tasks.js
 │   │   ├── App.css
 │   │   ├── App.jsx
 │   │   ├── assets
@@ -102,25 +174,91 @@
 │   │   │   ├── ReviewerAdminPage.jsx
 │   │   │   ├── ReviewersPage.jsx
 │   │   │   └── ReviewPage.jsx
-│   │   └── utils.js
+│   │   ├── styles
+│   │   │   └── base.css
+│   │   ├── utils.js
+│   │   └── vite-env.d.ts
 │   ├── tailwind.config.mjs
-│   └── vite.config.js
+│   ├── test-results
+│   │   └── .last-run.json
+│   ├── tests
+│   │   └── frontend
+│   │       ├── .gitkeep
+│   │       ├── components
+│   │       │   ├── ConfirmModal.test.jsx
+│   │       │   └── ErrorBoundary.test.jsx
+│   │       ├── hooks
+│   │       │   └── useDebounce.test.ts
+│   │       ├── msw
+│   │       │   ├── handlers.ts
+│   │       │   └── server.ts
+│   │       ├── pages
+│   │       │   ├── AdminPage.test.jsx
+│   │       │   ├── ConfirmModal.a11y.test.jsx
+│   │       │   ├── ReviewerAdminPage.sort-page.test.jsx
+│   │       │   ├── ReviewerAdminPage.test.jsx
+│   │       │   ├── ReviewersPage.add-edit-error.test.jsx
+│   │       │   ├── ReviewersPage.test.jsx
+│   │       │   ├── ReviewPage.submit-branch.test.jsx
+│   │       │   └── ReviewPage.test.jsx
+│   │       ├── pytest.ini
+│   │       ├── setupTests.ts
+│   │       └── test-utils.tsx
+│   ├── tsconfig.json
+│   ├── vite.config.js
+│   └── vitest.config.ts
+├── htmlcov
+│   ├── .gitignore
+│   ├── class_index.html
+│   ├── coverage_html_cb_6fb7b396.js
+│   ├── favicon_32_cb_58284776.png
+│   ├── function_index.html
+│   ├── index.html
+│   ├── keybd_closed_cb_ce680311.png
+│   ├── status.json
+│   ├── style_cb_6b508a39.css
+│   ├── z_64ee7c2bcef39067_assertions_py.html
+│   ├── z_9bac48a786dfeb07___init___py.html
+│   ├── z_b30b2a2b489f4b9c___init___py.html
+│   ├── z_b30b2a2b489f4b9c_arbitration_py.html
+│   ├── z_b30b2a2b489f4b9c_auth_py.html
+│   ├── z_b30b2a2b489f4b9c_export_py.html
+│   ├── z_b30b2a2b489f4b9c_meta_py.html
+│   ├── z_b30b2a2b489f4b9c_pricing_py.html
+│   ├── z_b30b2a2b489f4b9c_reviewers_py.html
+│   ├── z_b30b2a2b489f4b9c_tasks_py.html
+│   ├── z_bc41b973ac597a35_abstracts_py.html
+│   ├── z_bc41b973ac597a35_logs_py.html
+│   ├── z_bc41b973ac597a35_reviewers_py.html
+│   ├── z_d0e9dd6af06f5f6e_aggregation_py.html
+│   ├── z_d0e9dd6af06f5f6e_arbitration_py.html
+│   ├── z_d0e9dd6af06f5f6e_assignment_py.html
+│   ├── z_d0e9dd6af06f5f6e_audit_py.html
+│   ├── z_d0e9dd6af06f5f6e_pricing_py.html
+│   ├── z_d0e9dd6af06f5f6e_stats_py.html
+│   ├── z_d0e9dd6af06f5f6e_vocab_py.html
+│   ├── z_e17dcb4e28158375___init___py.html
+│   ├── z_e17dcb4e28158375_app_py.html
+│   ├── z_e17dcb4e28158375_config_py.html
+│   └── z_e17dcb4e28158375_wsgi_py.html
 ├── Miniconda3-latest-MacOSX-x86_64.sh
-├── models.py
 ├── project_structure.txt
 ├── README.md
+├── refactor_structure.sh
 ├── requirements.txt
-├── reviewer_utils.py
-├── reviewer.py
 ├── routes
 │   ├── __init__.py
 │   ├── admin.py
 │   ├── arbitration.py
 │   ├── auth.py
 │   ├── export.py
+│   ├── meta.py
+│   ├── pricing.py
 │   ├── reviewer.py
-│   └── task.py
-├── task_manager.py
+│   └── tasks.py
+├── scripts
+│   └── frontend
+│       └── generate-css-variables.js
 ├── templates
 │   ├── .ipynb_checkpoints
 │   │   ├── admin-checkpoint.html
@@ -135,6 +273,43 @@
 │   ├── no_more_tasks.html
 │   ├── review.html
 │   └── stats.html
-└── utils.py
+└── tests
+    └── backend
+        ├── .gitkeep
+        ├── conftest.py
+        ├── test_aggregation_find_conflicts.py
+        ├── test_aggregation_modify_conflict.py
+        ├── test_arbitration_api_more.py
+        ├── test_arbitration_basic.py
+        ├── test_arbitration_compat_routes.py
+        ├── test_arbitration_queue_pending.py
+        ├── test_assignment_concurrency_timeout.py
+        ├── test_assignment_minimal.py
+        ├── test_auth_rate_limit.py
+        ├── test_auth_tasks_audit.py
+        ├── test_auth_whoami_logout.py
+        ├── test_auth_whoami_more.py
+        ├── test_config_integrity_more.py
+        ├── test_config_integrity.py
+        ├── test_config_utils,more.py
+        ├── test_export_aggregation_more.py
+        ├── test_export_final_consensus_more.py
+        ├── test_extra_coverage.py
+        ├── test_handlers_more.py
+        ├── test_logs_and_filter.py
+        ├── test_logs_and_stats.py
+        ├── test_logs_utils.py
+        ├── test_logs_windows_filters_more.py
+        ├── test_meta_vocab_pricing.py
+        ├── test_misc_small.py
+        ├── test_models_and_domain.py
+        ├── test_pricing_service_more.py
+        ├── test_reviewers_admin.py
+        ├── test_reviewers_more_edges.py
+        ├── test_reviewers_unit_more.py
+        ├── test_routes_negative_paths.py
+        ├── test_tasks_rountes_more.py
+        ├── test_utils_more_cases.py
+        └── test_utils_more.py
 
-22 directories, 116 files
+53 directories, 260 files
