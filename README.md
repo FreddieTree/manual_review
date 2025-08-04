@@ -1,6 +1,6 @@
-# **Manual Review Platform for Biomedical Assertion Auditing**
+# **Manual Review Platform for Biomedical Assertions**
 
-A high-integrity, extensible, and auditable platform for **double-review human curation of sentence-level biomedical assertions**. Designed for teams working with AI/NLP outputs (such as LLM-generated triples/assertions) in biomedical literature mining, this system ensures traceability, consensus, and quality control for structured knowledge creation.
+A high-integrity, extensible, and auditable platform for **double-review human curation of sentence-level biomedical assertions**. Designed for teams working with AI/NLP outputs in biomedical literature mining, this system ensures traceability, consensus, and quality control for structured knowledge creation.
 
 ## **Project Structure**
 
@@ -104,7 +104,6 @@ A high-integrity, extensible, and auditable platform for **double-review human c
 	cd frontend
 	npm install
 	npm run build     # or: npm run dev  (for local hot reload)
-	cd ..
 	```
 
 ## Running the Server (Development)
@@ -125,18 +124,6 @@ A high-integrity, extensible, and auditable platform for **double-review human c
 	```
 	SPA will run on http://localhost:5173 by default.
 
-
-## Core Modules
-	•	app.py: Main Flask app, routes, session, and error handling.
-	•	config.py: All project constants and settings (admin info, timeouts, etc).
-	•	models.py: Data models (abstracts, assertions, logs, users), IO operations for JSONL/SQLite.
-	•	utils.py: Helper functions (text matching, field validation, highlighter, logger, etc).
-	•	task_manager.py: Task assignment, locking, timeout/release, concurrent access control.
-	•	reviewer.py: Review logic, state machine for assertions, shortcut management.
-	•	admin_tools.py: Administrator views, arbitration actions, report and log export.
-	•	static/: CSS, JS, and image assets.
-	•	templates/: Jinja2 HTML templates for all pages.
-	•	data/: Stores all input abstracts, logs, and review results.
 
 ## **Core Workflow**
 
