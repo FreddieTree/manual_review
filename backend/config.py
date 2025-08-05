@@ -87,11 +87,13 @@ try:
     PREDICATE_WHITELIST, ENTITY_TYPE_WHITELIST = _get_whitelists()
 except Exception:
     PREDICATE_WHITELIST = [
-        "causes", "increases", "reduces", "decreases",
-        "associated_with", "inhibits", "induces", "related_to",
-        "no_effect", "prevents",
+        "PREDISPOSES","COEXISTS_WITH","TREATS","AFFECTS","ISA","PROCESS_OF","USES",
+    "ASSOCIATED_WITH","CAUSES","DIAGNOSES","MANIFESTATION_OF","LOCATION_OF","PRECEDES",
+    "PART_OF","PREVENTS","DISRUPTS","COMPLICATES","ADMINISTERED_TO","PRODUCES",
+    "INTERACTS_WITH","OCCURS_IN","COMPARED_WITH","AUGMENTS","STIMULATES","SAME_AS",
+    "METHOD_OF","MEASUREMENT_OF","INHIBITS","CONVERTS_TO",
     ]
-    ENTITY_TYPE_WHITELIST = ["dsyn", "neop", "chem", "phsu", "gngm", "aapp", "sosy", "patf"]
+    ENTITY_TYPE_WHITELIST = ["acab","anab","cgab","dsyn","emod","fndg","inpo","mobd","neop","orga","patf","phsu","sosy"]
 
 def validate_predicate(predicate: str) -> bool:
     return predicate in PREDICATE_WHITELIST
