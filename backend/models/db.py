@@ -10,7 +10,6 @@ DB_NAME = "assertion_review"
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
 
-# 典型集合引用
 abstracts_col = db['abstracts']
 reviewers_col = db['reviewers']
 logs_col = db['logs']

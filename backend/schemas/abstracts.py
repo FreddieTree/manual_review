@@ -25,6 +25,6 @@ class Abstract(BaseModel):
     journal: str
     year: Optional[str]
     doi: Optional[str]
-    sentences: List[Sentence]  # 统一只用sentences字段！
+    sentences: List[Sentence]
     sentence_count: int
     meta: Optional[dict] = {}

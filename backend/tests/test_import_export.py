@@ -7,12 +7,12 @@ import os
 def test_import_and_export(tmp_path):
     test_file = "data/sentence_level_gpt4.1.jsonl"
     load_jsonl_to_db(test_file)
-    # 验证写入数据库
+    # Verify write to database
     assert abstracts_col.count_documents({}) > 0
-    # 导出
+    # export
     export_file = tmp_path / "exported.jsonl"
     export_passed_assertions(str(export_file))
-    # 验证导出文件非空
+    # Verify that the exported file is not empty.
     assert export_file.exists()
     assert export_file.stat().st_size > 0
 
