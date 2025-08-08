@@ -15,11 +15,11 @@ logger = get_logger("models.reviewers")
 _LOCK = threading.RLock()
 
 # ---------------------------------------------------------------------------
-# Path helpers（动态读取以适配测试夹具/运行环境的临时目录）
+# Path helpers (dynamic read to adapt to test fixtures/runtime temp dirs)
 # ---------------------------------------------------------------------------
 
 def _file_path() -> Path:
-    """优先读取环境变量 MANUAL_REVIEW_REVIEWERS_JSON；否则退回 config.REVIEWERS_JSON。"""
+    """Prefer MANUAL_REVIEW_REVIEWERS_JSON; otherwise fallback to config.REVIEWERS_JSON."""
     env = os.environ.get("MANUAL_REVIEW_REVIEWERS_JSON")
     return Path(env) if env else Path(REVIEWERS_JSON)
 
@@ -55,9 +55,8 @@ def _normalize_record(r: Dict[str, Any]) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 def _load_raw() -> List[Dict[str, Any]]:
-    """
-    读取 reviewers 列表。若文件不存在则创建空数组。
-    坏结构/坏行时返回空数组并记录日志。
+    """Read reviewers list. Create empty file if missing.
+    Return empty list on bad structure/lines and log the error.
     """
     p = _ensure_file()
     try:
@@ -69,9 +68,7 @@ def _load_raw() -> List[Dict[str, Any]]:
         return []
 
 def _atomic_write(data: List[Dict[str, Any]]) -> None:
-    """
-    原子写入：同目录临时文件 -> flush+fsync -> os.replace。
-    """
+    """Atomic write using same-dir temp file -> flush+fsync -> os.replace."""
     p = _ensure_file()
     tmp_fd, tmp_path = tempfile.mkstemp(prefix="reviewers.", suffix=".tmp", dir=str(p.parent))
     os.close(tmp_fd)
@@ -96,21 +93,19 @@ def _atomic_write(data: List[Dict[str, Any]]) -> None:
 # ---------------------------------------------------------------------------
 
 def load_reviewers() -> List[Dict[str, Any]]:
-    """返回**已规范化**的 reviewers 列表。"""
+    """Return normalized reviewers list."""
     with _LOCK:
         raw = _load_raw()
         out = [_normalize_record(r) for r in raw if isinstance(r, dict)]
         return out
 
 def save_reviewers(reviewers: List[Dict[str, Any]]) -> None:
-    """覆盖保存 reviewers（会规范化输入）。"""
+    """Overwrite reviewers file (normalizes the input first)."""
     with _LOCK:
         _atomic_write([_normalize_record(r) for r in reviewers if isinstance(r, dict)])
 
 def get_all_reviewers() -> List[Dict[str, Any]]:
-    """
-    返回去重后的 reviewers（以 email 为主键；后写覆盖先写），按 email 排序。
-    """
+    """Return deduplicated reviewers (keyed by email; last write wins), sorted by email."""
     with _LOCK:
         data = _load_raw()
         dedup: Dict[str, Dict[str, Any]] = {}

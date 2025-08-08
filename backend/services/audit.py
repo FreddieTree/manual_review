@@ -39,6 +39,7 @@ from ..domain.assertions import (
 )
 from ..models.abstracts import get_abstract_by_id
 from ..services.vocab import is_valid_predicate, is_valid_entity_type
+from flask import request
 
 logger = logging.getLogger(__name__)
 if not logger.handlers:
@@ -204,6 +205,7 @@ def _validate_fields_against_sentence(
 
     # subject
     if subject:
+        # Rule: subject/object must appear as a contiguous token match (case-insensitive). Substrings allowed (e.g., 'obesity' is valid when text contains 'morbid obesity'), reverse not.
         if not _contains_case_insensitive(sentence_text, subject):
             best, score = _best_fuzzy_span(sentence_text, subject)
             fuzzy = {"text": best, "score": score} if best and score >= FUZZY_THRESHOLD else None
@@ -484,7 +486,7 @@ def audit_review_submission(
                         )
                     )
 
-            # Uncertain requires a reason
+            # Uncertain requires a reason (comment required)
             if decision == "uncertain" and not (comment or "").strip():
                 field_issues.append(
                     _mk_violation(
@@ -503,11 +505,13 @@ def audit_review_submission(
             if any(v["level"] == "error" for v in field_issues):
                 can_commit = False
 
-            # Emit logs (do not auto-alter decision based on violations)
+            # Emit logs (append-only; no physical delete/modify allowed)
             if decision == "accept" and not is_modified_flag:
                 # No log for plain accepts (historical behavior)
                 continue
             elif decision == "modify" or (decision == "accept" and is_modified_flag):
+                # Only allow modify of existing assertions during this review session; uploaded assertions from others
+                # cannot be edited here. We treat it as your own "modify" to create a new snapshot.
                 logs.append(
                     update_assertion(
                         original=assertion,
@@ -623,10 +627,19 @@ def audit_review_submission(
                 )
 
     # Enrich logs with fallback identity & ISO timestamp
+    # Attach IP for traceability
+    ip_addr = None
+    try:
+        ip_addr = request.remote_addr
+    except Exception:
+        ip_addr = None
+
     for log in logs:
         if "creator" not in log and "reviewer" not in log:
             log["creator"] = email
         log.setdefault("logged_at", datetime.utcnow().isoformat() + "Z")
+        if ip_addr and "ip" not in log:
+            log["ip"] = ip_addr
 
     return {
         "logs": logs,

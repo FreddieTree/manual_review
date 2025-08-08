@@ -2,8 +2,14 @@
 
 import json
 import traceback
+import threading
+import time
+import uuid
+from typing import Callable, Optional, Dict, Any
 from backend.models.db import abstracts_col
 from backend.schemas.abstracts import Abstract
+from backend.models.logs import log_review_action
+from backend.models.logs import log_review_action
 
 def fill_assertion_index(obj):
     """补全历史脏数据，每个句子断言都保证 assertion_index 完整、assertions 字段存在。"""
@@ -39,7 +45,7 @@ def merge_abstract(existing_doc, new_doc):
                     updated = True
     return updated
 
-def load_jsonl_to_db(jsonl_path, error_log_path="data/failed_imports.jsonl", batch_size=100):
+def load_jsonl_to_db(jsonl_path, error_log_path="data/failed_imports.jsonl", batch_size=100, *, progress_callback: Optional[Callable[[Dict[str, Any]], None]] = None):
     """
     极致健壮的批量导入。遇到异常自动记录错误，所有句子全部保留。
     支持断点续导/多次reimport error_log。
@@ -47,6 +53,7 @@ def load_jsonl_to_db(jsonl_path, error_log_path="data/failed_imports.jsonl", bat
     failed = 0
     total = 0
     success = 0
+    started_at = time.time()
     with open(jsonl_path, 'r', encoding='utf-8') as f, \
          open(error_log_path, 'a', encoding='utf-8') as errf:
         for line in f:
@@ -76,9 +83,35 @@ def load_jsonl_to_db(jsonl_path, error_log_path="data/failed_imports.jsonl", bat
                     "raw": line
                 }, ensure_ascii=False) + "\n")
                 errf.flush()
+                try:
+                    log_review_action({
+                        "action": "admin_import_failed",
+                        "error": str(e),
+                        "created_at": __import__('time').time(),
+                    })
+                except Exception:
+                    pass
             if (total % batch_size) == 0:
                 print(f"Processed {total} items, with {success} successful and {failed} failed.")
+                if progress_callback:
+                    progress_callback({
+                        "total": total,
+                        "success": success,
+                        "failed": failed,
+                        "stage": "initial",
+                        "started_at": started_at,
+                        "updated_at": time.time(),
+                    })
     print(f"\nImport complete: Total {total} items, successful {success} items, failed {failed} items. Failed samples logged to {error_log_path}.")
+    if progress_callback:
+        progress_callback({
+            "total": total,
+            "success": success,
+            "failed": failed,
+            "stage": "initial_done",
+            "started_at": started_at,
+            "updated_at": time.time(),
+        })
 
 def reimport_failed(error_log_path="data/failed_imports.jsonl"):
     """循环自动重导所有 failed_imports.jsonl，直到没有新pmid导入为止。"""
@@ -112,6 +145,69 @@ def reimport_failed(error_log_path="data/failed_imports.jsonl"):
             print(f"There are still records that have not been successfully imported, continue to the next round...")
             os.rename(tmp_error_path, error_log_path)
             os.remove(bak_path)
+
+# ----------------- Background job management for real-time progress -----------------
+
+_JOBS_LOCK = threading.RLock()
+_IMPORT_JOBS: Dict[str, Dict[str, Any]] = {}
+
+
+def _update_job(job_id: str, **fields):
+    with _JOBS_LOCK:
+        job = _IMPORT_JOBS.setdefault(job_id, {})
+        job.update(fields)
+
+
+def start_import_job(jsonl_path: str, error_log_path: str) -> str:
+    job_id = str(uuid.uuid4())
+    _update_job(job_id, status="starting", started_at=time.time(), attempts=0, total=0, success=0, failed=0)
+
+    def progress_cb(stats: Dict[str, Any]):
+        _update_job(job_id, **stats)
+
+    def run():
+        try:
+            _update_job(job_id, status="running", attempts=1)
+            load_jsonl_to_db(jsonl_path, error_log_path=error_log_path, progress_callback=progress_cb)
+            # Up to 2 more attempts (total 3)
+            for attempt in range(2):
+                _update_job(job_id, status="retrying", attempts=2 + attempt)
+                reimport_failed(error_log_path)
+                # If error log is empty or gone, stop
+                import os
+                if not os.path.exists(error_log_path) or os.path.getsize(error_log_path) == 0:
+                    break
+            _update_job(job_id, status="completed", finished_at=time.time())
+            try:
+                log_review_action({
+                    "action": "admin_import_completed",
+                    "job_id": job_id,
+                    "source_path": jsonl_path,
+                    "error_log": error_log_path,
+                    "created_at": time.time(),
+                })
+            except Exception:
+                pass
+        except Exception as e:
+            _update_job(job_id, status="failed", error=str(e), finished_at=time.time())
+            try:
+                log_review_action({
+                    "action": "admin_import_job_failed",
+                    "job_id": job_id,
+                    "error": str(e),
+                    "created_at": time.time(),
+                })
+            except Exception:
+                pass
+
+    t = threading.Thread(target=run, daemon=True, name=f"ImportJob-{job_id}")
+    t.start()
+    return job_id
+
+
+def get_import_progress(job_id: str) -> Dict[str, Any]:
+    with _JOBS_LOCK:
+        return dict(_IMPORT_JOBS.get(job_id, {}))
 
 if __name__ == "__main__":
     import argparse

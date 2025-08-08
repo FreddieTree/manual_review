@@ -13,6 +13,7 @@ import Select from "../components/ui/Select";
 import Button from "../components/ui/Button";
 import Loader from "../components/ui/Loader";
 import Badge from "../components/ui/Badge";
+import Card from "../components/ui/Card";
 import ConfirmModal from "../components/ConfirmModal";
 
 const DEFAULT_PAGE_SIZE = 25;
@@ -273,8 +274,8 @@ export default function ReviewerAdminPage() {
     const isFormValid = !validateForm();
 
     return (
-        <div className="max-w-4xl mx-auto mt-8">
-            <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-100">
+        <div className="max-w-5xl mx-auto px-4 mt-8">
+            <Card>
                 {/* Header: back + title */}
                 <div className="flex flex-col sm:flex-row justify-between gap-4 mb-6 items-start">
                     <div className="flex items-center gap-4 flex-1">
@@ -437,7 +438,7 @@ export default function ReviewerAdminPage() {
                 {/* Reviewer table */}
                 <div className="overflow-x-auto">
                     <div className="flex items-center justify-between mb-2">
-                        <div className="text-sm text-gray-600">
+                        <div className="text-sm text-gray-600 dark:text-gray-300">
                             Showing {paginated.length} of {sorted.length} reviewer
                             {sorted.length !== 1 && "s"}
                         </div>
@@ -460,7 +461,7 @@ export default function ReviewerAdminPage() {
                     </div>
 
                     <table className="min-w-full border-collapse text-sm">
-                        <thead className="sticky top-0 bg-gray-100 z-10">
+                        <thead className="sticky top-0 bg-gray-50 dark:bg-slate-800/60 z-10">
                             <tr className="text-left">
                                 {[
                                     { key: "email", label: "Email", sortable: true },
@@ -501,7 +502,7 @@ export default function ReviewerAdminPage() {
                                 </tr>
                             ) : paginated.length ? (
                                 paginated.map((r) => (
-                                    <tr key={r.email} className="hover:bg-gray-50">
+                                    <tr key={r.email} className="hover:bg-gray-50 dark:hover:bg-slate-800/40">
                                         <td className="px-3 py-2 break-all">{r.email}</td>
                                         <td className="px-3 py-2">{r.name}</td>
                                         <td className="px-3 py-2">
@@ -538,7 +539,7 @@ export default function ReviewerAdminPage() {
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan={6} className="py-6 text-center text-gray-500">
+                                    <td colSpan={6} className="py-6 text-center text-gray-500 dark:text-gray-400">
                                         No reviewers found.
                                     </td>
                                 </tr>
@@ -571,7 +572,7 @@ export default function ReviewerAdminPage() {
                         </div>
                     </div>
                 </div>
-            </div>
+            </Card>
 
             {/* Delete confirm modal */}
             <ConfirmModal

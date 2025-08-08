@@ -13,6 +13,8 @@ import clsx from "clsx";
 import Button from "../components/ui/Button";
 import { loginReviewer } from "../api/auth";
 import { useDebouncedValue } from "../hooks/useDebounce";
+import Card from "../components/ui/Card";
+import Section from "../components/ui/Section";
 
 const EMAIL_DOMAIN = import.meta.env.VITE_EMAIL_DOMAIN || "bristol.ac.uk";
 const MAX_ATTEMPTS = 5;
@@ -37,7 +39,7 @@ function HelpModal({ open, onClose, lockoutSeconds }) {
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur px-4"
       onClick={(e) => e.target === e.currentTarget && onClose?.()}
     >
-      <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-8 flex flex-col gap-6 border border-gray-200">
+      <Card className="max-w-sm w-full p-8 flex flex-col gap-6">
         <div className="flex justify-between items-start">
           <div id="help-title" className="text-lg font-bold text-gray-900">
             Need help?
@@ -71,7 +73,7 @@ function HelpModal({ open, onClose, lockoutSeconds }) {
         <Button fullWidth size="sm" variant="primary" onClick={onClose}>
           Close
         </Button>
-      </div>
+      </Card>
     </div>
   );
 }
@@ -213,12 +215,22 @@ function LoginPageImpl(_, ref) {
         navigate(next || "/review", { replace: true });
       }
     } catch (err) {
-      const msg =
-        err?.response?.data?.message ||
-        err?.message ||
-        "Network/server error. Please try again.";
-      setGlobalError(msg);
-      noteFailedAttempt();
+      const status = err?.status ?? err?.response?.status;
+      // Respect server rate-limit signal
+      if (status === 429) {
+        const retryAfter = Number(err?.response?.data?.retry_after || err?.response?.headers?.["retry-after"] || 0);
+        if (retryAfter > 0) {
+          setLockedUntil(Date.now() + retryAfter * 1000);
+          setGlobalError("Too many failed attempts. Please wait.");
+        } else {
+          noteFailedAttempt();
+          setGlobalError(err?.message || "Temporarily rate limited.");
+        }
+      } else {
+        const msg = err?.response?.data?.message || err?.message || "Network/server error. Please try again.";
+        setGlobalError(msg);
+        noteFailedAttempt();
+      }
     } finally {
       setLoading(false);
     }
@@ -243,32 +255,13 @@ function LoginPageImpl(_, ref) {
       `}</style>
 
       <div className="relative w-full max-w-[36rem] mx-auto z-10">
-        <div className="pointer-events-none absolute -inset-6 -z-10">
-          <div className="absolute -top-10 -left-16 w-56 h-40 rounded-full bg-indigo-100/60 blur-2xl" />
-          <div className="absolute bottom-10 right-6 w-48 h-28 rounded-full bg-sky-100/50 blur-2xl" />
-        </div>
-
-        <div
-          className={clsx(
-            "rounded-[1.5rem] bg-white/80 backdrop-blur-xl border-white/70 shadow-2xl overflow-hidden",
-            "ring-1 ring-black/5 transition-all duration-300"
-          )}
-          style={{
-            boxShadow:
-              "0 14px 38px rgba(43,93,215,0.12), 0 2px 8px rgba(0,0,0,0.06), inset 0 0.5px 1.5px rgba(255,255,255,0.35)",
-            background:
-              "linear-gradient(135deg,rgba(255,255,255,0.96) 86%,rgba(242,246,255,0.92))",
-          }}
-        >
-          <div className="p-10 sm:p-12 space-y-10">
-            <header className="text-center space-y-2">
-              <h1 className="text-[28px]/8 sm:text-3xl font-extrabold tracking-tight text-slate-900">
-                Assertion Review System
-              </h1>
-              <p className="text-[15px] text-slate-500">
-                Sign in with your Bristol email to continue reviewing.
-              </p>
-            </header>
+        <Card className="p-10 sm:p-12 space-y-10">
+          <Section
+            title="Assertion Review System"
+            description="Sign in with your Bristol email to continue reviewing."
+          >
+            <div className="hidden" />
+          </Section>
 
             {(lockoutActive || globalError) && (
               <div
@@ -443,8 +436,7 @@ function LoginPageImpl(_, ref) {
                 Your session is private and secure.
               </p>
             </footer>
-          </div>
-        </div>
+        </Card>
 
         <HelpModal
           open={helpOpen}

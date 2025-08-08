@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, request, session, jsonify
 
-from ..services.assignment import assign_abstract_to_reviewer, release_expired_locks
+from ..services.assignment import assign_abstract_to_reviewer, release_expired_locks, release_assignment, touch_assignment
 from ..models.abstracts import get_abstract_by_id
 from ..models.logs import log_review_action
 from ..services.stats import get_stats_for_reviewer   # <-- 改为服务层
@@ -52,6 +52,15 @@ def require_login(f):
         return f(*args, **kwargs)
     return wrapper
 
+
+def require_admin(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("is_admin"):
+            return error_response("Not authorized", status=403, error_code="not_authorized")
+        return f(*args, **kwargs)
+    return wrapper
+
 @task_api.route("/assigned_abstract", methods=["GET"])
 @require_login
 def api_assigned_abstract():
@@ -81,7 +90,36 @@ def api_assigned_abstract():
         return success_response(payload)
     except Exception as e:
         logger.exception("Error in assigned_abstract for %s", email)
-        return error_response(f"Failed to assign abstract: {e}", status=500, error_code="assignment_error")
+        return error_response("Failed to assign abstract", status=500, error_code="assignment_error")
+
+
+@task_api.route("/heartbeat", methods=["POST"])  # keep lock alive
+@require_login
+def api_heartbeat():
+    email = session.get("email")
+    pmid = session.get("current_abs_id")
+    if not email or not pmid:
+        return error_response("No active assignment", status=400, error_code="no_active_assignment")
+    try:
+        touched = touch_assignment(email, str(pmid))
+        return success_response({"touched": bool(touched)})
+    except Exception:
+        return error_response("Failed to refresh lock", status=500, error_code="heartbeat_failed")
+
+
+@task_api.route("/abandon", methods=["POST"])  # voluntarily release current assignment
+@require_login
+def api_abandon():
+    email = session.get("email")
+    pmid = session.get("current_abs_id")
+    if not email or not pmid:
+        return error_response("No active assignment", status=400, error_code="no_active_assignment")
+    try:
+        ok = release_assignment(email=email, pmid=str(pmid))
+    except Exception:
+        ok = False
+    session.pop("current_abs_id", None)
+    return success_response({"abandoned": bool(ok)})
 
 @task_api.route("/submit_review", methods=["POST"])
 @require_login
@@ -101,6 +139,10 @@ def api_submit_review():
     pmid = payload.get("pmid") or session.get("current_abs_id")
     if not pmid:
         return error_response("No abstract specified or assigned", status=400, error_code="missing_pmid")
+
+    # Ensure reviewer only submits for their current lock
+    if session.get("current_abs_id") != pmid:
+        return error_response("Not authorized for this abstract", status=403, error_code="wrong_assignment")
 
     abstract = get_abstract_by_id(pmid)
     if not abstract:
@@ -137,6 +179,7 @@ def api_submit_review():
                 data={"violations": violations},
             )
 
+        # Only proceed to write when all assertions for this abstract are compliant; append-only
         written = 0
         for log in logs:
             try:
@@ -156,4 +199,4 @@ def api_submit_review():
         })
     except Exception as e:
         logger.exception("Audit or persistence failure for reviewer %s on %s", email, pmid)
-        return error_response(f"Audit failed: {e}", status=500, error_code="audit_error")
+        return error_response("Audit failed", status=500, error_code="audit_error")

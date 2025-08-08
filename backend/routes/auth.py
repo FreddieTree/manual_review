@@ -16,17 +16,17 @@ auth_api = Blueprint("auth_api", __name__, url_prefix="/api")
 
 
 def standard_response(success: bool = True, **kwargs):
-    """统一 JSON 结构体（不负责状态码）。"""
+    """Standard JSON payload (status code handled by route)."""
     payload = {"success": success}
     payload.update(kwargs)
     return jsonify(payload)
 
 
-# ---- In-memory rate limiting (可替换为 Redis/外部) ----
+# ---- In-memory rate limiting (replace with Redis/external in production) ----
 _LOGIN_ATTEMPTS: Dict[str, Dict[str, Any]] = {}
-LOCKOUT_THRESHOLD = 5  # 窗口内失败次数
-LOCKOUT_WINDOW = 60  # 秒
-COOLDOWN_SECONDS = 120  # 锁定时长
+LOCKOUT_THRESHOLD = 5  # failures within the window
+LOCKOUT_WINDOW = 60  # seconds
+COOLDOWN_SECONDS = 120  # cooldown lock duration
 
 
 def rate_limit_login(f):
@@ -88,20 +88,6 @@ def rate_limit_login(f):
 
 
 # ---- helpers ----
-
-ADMIN_LIKE_LOCALPARTS = {"admin", "administrator", "root"}
-
-
-def _looks_like_admin_email(email: str) -> bool:
-    try:
-        local, _, domain = email.partition("@")
-        if not local or not domain:
-            return False
-        if domain not in EMAIL_ALLOWED_DOMAINS:
-            return False
-        return local.lower() in ADMIN_LIKE_LOCALPARTS
-    except Exception:
-        return False
 
 
 def _log_login(email: str, name: str, is_admin: bool) -> None:
@@ -176,7 +162,8 @@ def api_login():
             current_app.logger.warning("Reviewer name mismatch: %s != %s", name, display_name)
             return standard_response(False, message="Not a valid reviewer account."), 403
 
-        is_admin = role == "admin"
+        # Single-admin policy: only ADMIN_EMAIL is admin; reviewer role cannot grant admin
+        is_admin = False
         session.clear()
         session.update({"name": name or display_name, "email": email, "is_admin": is_admin})
         session.permanent = True
@@ -223,15 +210,6 @@ def api_login():
             ),
             200,
         )
-
-    # 3) 管理员兜底（localpart fallback）
-    if _looks_like_admin_email(email):
-        session.clear()
-        session.update({"name": name, "email": email, "is_admin": True})
-        session.permanent = True
-        _log_login(email, name, True)
-        current_app.logger.info("Admin login via fallback: %s", email)
-        return standard_response(True, is_admin=True), 200
 
     current_app.logger.warning("Login rejected, reviewer not found: %s", email)
     return standard_response(False, message="Not a valid reviewer account."), 403

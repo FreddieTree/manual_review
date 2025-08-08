@@ -10,7 +10,7 @@ import useScrollRestoration from "./hooks/useScrollRestoration";
 const LoginPage = React.lazy(() => import("./pages/LoginPage"));
 const ReviewPage = React.lazy(() => import("./pages/ReviewPage"));
 const AdminPage = React.lazy(() => import("./pages/AdminPage"));
-const ReviewersPage = React.lazy(() => import("./pages/ReviewersPage"));
+const ReviewerAdminPage = React.lazy(() => import("./pages/ReviewerAdminPage"));
 const ArbitrationPage = React.lazy(() => import("./pages/ArbitrationPage"));
 const NoTasksPage = React.lazy(() => import("./pages/NoTasksPage"));
 const NotFoundPage = React.lazy(() => import("./pages/NotFoundPage"));
@@ -20,7 +20,7 @@ const ROUTES = [
   { path: "/", element: <LoginPage />, title: "Login" },
   { path: "/review", element: <ReviewPage />, title: "Review" },
   { path: "/admin", element: <AdminPage />, title: "Admin" },
-  { path: "/admin/reviewers", element: <ReviewersPage />, title: "Reviewers" },
+  { path: "/admin/reviewers", element: <ReviewerAdminPage />, title: "Reviewers" },
   { path: "/admin/arbitration", element: <ArbitrationPage />, title: "Arbitration" },
   { path: "/no_more_tasks", element: <NoTasksPage />, title: "No More Tasks" },
   { path: "*", element: <NotFoundPage />, title: "Not Found" },

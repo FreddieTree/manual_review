@@ -54,6 +54,12 @@ def _sanitize_record(record: Dict[str, Any]) -> Dict[str, Any]:
     created = _to_float_ts(rec.get("created_at"), default=now)
     rec["created_at"] = created
     rec.setdefault("timestamp", created)
+    # Ensure action present and normalized for query
+    if rec.get("action"):
+        try:
+            rec["action"] = str(rec["action"]).strip().lower()
+        except Exception:
+            pass
     return rec
 
 # ---------------------------------------------------------------------------
@@ -64,6 +70,15 @@ def log_review_action(record: Dict[str, Any], *, path: Optional[str | os.PathLik
     p = _to_path(path)
     _ensure_dir(p)
     rec = _sanitize_record(record)
+    # Best-effort operator/ip propagation
+    try:
+        from flask import request
+        if "ip" not in rec:
+            rec["ip"] = request.remote_addr
+        if "user_agent" not in rec:
+            rec["user_agent"] = request.headers.get("User-Agent", "")
+    except Exception:
+        pass
     data = json.dumps(rec, ensure_ascii=False)
 
     with _WRITE_LOCK:
@@ -164,7 +179,7 @@ def get_reviewer_logs(
 
     filtered: List[Dict[str, Any]] = []
     for log in logs:
-        actor = ((log.get("creator") or log.get("reviewer") or "")).strip().lower()
+        actor = ((log.get("creator") or log.get("reviewer") or log.get("email") or "")).strip().lower()
         if actor != email_norm:
             continue
 

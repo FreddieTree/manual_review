@@ -42,9 +42,8 @@ _cached_parsed_logs: Optional[List[Dict[str, Any]]] = None
 
 
 def _log_path() -> Path:
-    """
-    与 models.logs._to_path 保持一致：
-    优先环境变量 MANUAL_REVIEW_REVIEW_LOGS_PATH（pytest 夹具会设定），否则回退配置常量。
+    """Mirror models.logs._to_path behavior: prefer env var for tests/overrides.
+    Fallback to configured REVIEW_LOGS_PATH.
     """
     env_path = os.environ.get("MANUAL_REVIEW_REVIEW_LOGS_PATH")
     return Path(env_path) if env_path else Path(REVIEW_LOGS_PATH)
@@ -59,9 +58,7 @@ def _get_log_file_mtime() -> float:
 
 
 def invalidate_cache() -> None:
-    """
-    失效原始日志缓存 + 按 PMID 的聚合缓存。
-    """
+    """Invalidate raw log cache and per-PMID aggregation cache."""
     global _cached_log_mtime, _cached_parsed_logs
     with _log_file_lock:
         _cached_log_mtime = None
@@ -73,9 +70,7 @@ def invalidate_cache() -> None:
 
 
 def _load_raw_logs() -> List[Dict[str, Any]]:
-    """
-    从 JSONL 读取日志；以文件 mtime 作朴素缓存；跳过坏行。
-    """
+    """Load raw JSONL logs with mtime cache; skip malformed lines."""
     global _cached_log_mtime, _cached_parsed_logs
     with _log_file_lock:
         current_mtime = _get_log_file_mtime()
@@ -112,7 +107,7 @@ def _load_raw_logs() -> List[Dict[str, Any]]:
 # ---------- Normalization & timestamps --------------------------------------
 
 def _norm_action(act: Any) -> str:
-    """Enum/字符串统一为小写字符串。"""
+    """Normalize action to lowercase string (supports Enum and str)."""
     if act is None:
         return ""
     val = getattr(act, "value", act)
@@ -120,7 +115,7 @@ def _norm_action(act: Any) -> str:
 
 
 def _ts(log: Dict[str, Any]) -> float:
-    """优先 created_at，后备 timestamp；容忍字符串数字。"""
+    """Prefer created_at, fallback to timestamp; accept numeric strings."""
     for key in ("created_at", "timestamp"):
         v = log.get(key)
         try:
@@ -135,7 +130,7 @@ def _ts(log: Dict[str, Any]) -> float:
 # ---------- Grouping ---------------------------------------------------------
 
 def _content_key(log: Dict[str, Any]) -> str:
-    """基于内容生成稳定 key（字段缺失时为空字符串）。"""
+    """Generate stable content key (empty string if fields missing)."""
     return make_assertion_id(
         log.get("subject", ""),
         log.get("subject_type", ""),
@@ -146,19 +141,21 @@ def _content_key(log: Dict[str, Any]) -> str:
 
 
 def _group_logs_for_pmid_ordered(pmid: str, logs: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    以时间序归并的分组算法（关键修复点）：
-      1) related_to -> 直接归属；
-      2) assertion_id -> 直接归属；
-      3) action==add -> 以“内容 key”建组，并更新 last_add_key；
-      4) 其他动作：
-          - 若具备完整内容字段 -> 用内容 key；
-          - 否则（缺少 assertion_id + 内容） -> 归到当前 last_add_key（若不存在再退回内容 key）。
-    这样能把“缺失 assertion_id 的 accept/reject”等正确归到最近的 add，避免不同断言被空 key 合并。
+    """Time-ordered grouping algorithm:
+      1) If 'related_to' is present -> group by that id
+      2) Else if 'assertion_id' is present -> group by that id
+      3) Else if action == add -> group by content key and update last_add_key
+      4) For other actions without ids:
+          - If content fields exist -> use content key
+          - Else if last_add_key exists -> group to last_add_key
+          - Else fallback to content key (may be empty)
+
+    This keeps accepts/rejects without assertion_id attached to the latest prior add,
+    preventing unrelated assertions from merging under empty keys.
     """
     pmid_s = str(pmid)
     filt = [l for l in logs if str(l.get("pmid")) == pmid_s]
-    # 稳定按时间升序
+    # Sort by time ascending
     filt.sort(key=_ts)
 
     agg: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
@@ -178,7 +175,7 @@ def _group_logs_for_pmid_ordered(pmid: str, logs: List[Dict[str, Any]]) -> Dict[
                 key = _content_key(log)
                 last_add_key = key or last_add_key
             else:
-                # 是否有足够内容
+                # Do we have enough content to compute a key?
                 has_content = any(log.get(k) for k in ("subject", "predicate", "object"))
                 if has_content:
                     key = _content_key(log)
@@ -190,7 +187,7 @@ def _group_logs_for_pmid_ordered(pmid: str, logs: List[Dict[str, Any]]) -> Dict[
 
         agg[key].append(log)
 
-        # 一些日志在后置也带来了 add-like 内容，谨慎更新 last_add_key 仅限真 add
+        # Only update last_add_key for true 'add' actions
         if action == Action.ADD.value and key:
             last_add_key = key
 
@@ -198,7 +195,7 @@ def _group_logs_for_pmid_ordered(pmid: str, logs: List[Dict[str, Any]]) -> Dict[
 
 
 def _group_logs_by_assertion(pmid: str, logs: List[Dict[str, Any]]) -> Dict[str, List[Dict[str, Any]]]:
-    """公共入口，封装为有序分组。"""
+    """Public entrypoint that wraps the ordered grouping."""
     return _group_logs_for_pmid_ordered(pmid, logs)
 
 # ---------- Consensus Logic --------------------------------------------------
@@ -208,12 +205,11 @@ def consensus_decision(
     require_exact_content_match: bool = False,
     min_reviewers_for_consensus: int = 2,
 ) -> ConsensusResult:
-    """
-    单一断言的共识判定：
-      1. 出现 arbitrate -> ARBITRATED
-      2. 有 reject/uncertain -> 若全 uncertain 则 UNCERTAIN，否则 CONFLICT
-      3. 仅 accept/modify -> 数量达到阈值视为 CONSENSUS；若要求精确内容且多次 modify 不一致 -> CONFLICT
-      4. 其他情况 -> UNCERTAIN 或 PENDING
+    """Consensus for a single assertion:
+      1. If any arbitrate -> ARBITRATED
+      2. If reject/uncertain exist -> UNCERTAIN if all uncertain else CONFLICT
+      3. If only accept/modify -> CONSENSUS if support >= threshold; when exact-match required and multiple modify disagree -> CONFLICT
+      4. Otherwise -> UNCERTAIN or PENDING
     """
     if not logs:
         return ConsensusResult.PENDING
@@ -265,9 +261,7 @@ def consensus_decision(
 
 @lru_cache(maxsize=128)
 def aggregate_assertions_for_pmid(pmid: str) -> Dict[str, List[Dict[str, Any]]]:
-    """
-    聚合指定 PMID 的断言日志，按稳定生命周期键分组（有序算法）。
-    """
+    """Aggregate logs for a PMID by lifecycle key (ordered algorithm)."""
     logs = _load_raw_logs()
     return _group_logs_by_assertion(pmid, logs)
 
@@ -277,14 +271,13 @@ def get_detailed_assertion_summary(
     require_exact_content_match: bool = False,
     min_reviewers_for_consensus: int = 2,
 ) -> List[Dict[str, Any]]:
-    """
-    返回每个断言的：
+    """Return for each assertion:
       - consensus_status
       - support_counts
       - last_updated
       - reviewers
       - logs
-      - conflict_reason（如适用）
+      - conflict_reason (if applicable)
     """
     agg = aggregate_assertions_for_pmid(pmid)
     summary: List[Dict[str, Any]] = []
@@ -336,7 +329,7 @@ def get_detailed_assertion_summary(
 
 
 def _pmids_from_logs(logs: Iterable[Dict[str, Any]]) -> List[str]:
-    """从原始日志收集唯一 PMID。"""
+    """Collect distinct PMIDs from raw logs."""
     out: List[str] = []
     seen = set()
     for l in logs:
@@ -349,10 +342,9 @@ def _pmids_from_logs(logs: Iterable[Dict[str, Any]]) -> List[str]:
 
 
 def find_assertion_conflicts(pmid: Optional[str] = None) -> List[Dict[str, Any]]:
-    """
-    列出当前处于冲突的断言（不含已仲裁）。
-    - 若指定 pmid：仅检查该 pmid；
-    - 否则：使用“摘要 + 日志”的 PMID 并集，逐个 pmid 用同一套分组/判定逻辑。
+    """List current conflicted assertions (excluding arbitrated).
+    - If pmid specified: check only that pmid
+    - Else: union of PMIDs from abstracts and logs using same grouping/decision logic
     """
     raw = _load_raw_logs()
     if pmid is not None:
@@ -378,9 +370,7 @@ def find_assertion_conflicts(pmid: Optional[str] = None) -> List[Dict[str, Any]]
 
 
 def aggregate_final_decisions_for_pmid(pmid: str) -> List[Dict[str, Any]]:
-    """
-    返回最终决策（已达共识或已仲裁）的断言；以该组最后一条日志为权威快照。
-    """
+    """Return final decisions (consensus or arbitrated) per assertion using the last log as authoritative snapshot."""
     detailed = get_detailed_assertion_summary(pmid)
     finals: List[Dict[str, Any]] = []
     for item in detailed:
@@ -401,9 +391,8 @@ def aggregate_final_decisions_for_pmid(pmid: str) -> List[Dict[str, Any]]:
 # ---------- Export / Overview ------------------------------------------------
 
 def export_final_consensus(out_path: Optional[str | Path] = None) -> tuple[int, Path]:
-    """
-    导出所有 PMID 的“最终决策”到 JSONL 文件。
-    返回: (写入条数, 文件路径)
+    """Export all PMIDs' final decisions to JSONL.
+    Returns (written_count, file_path).
     """
     raw = _load_raw_logs()
     pmids = list({*get_all_pmids(), *_pmids_from_logs(raw)})
@@ -424,9 +413,7 @@ def export_final_consensus(out_path: Optional[str | Path] = None) -> tuple[int, 
 
 
 def export_summary_to_json(pmid: str, out_path: str) -> bool:
-    """
-    导出指定 PMID 的详细断言汇总为 JSON 文件。
-    """
+    """Export a detailed assertion summary for a PMID to a JSON file."""
     try:
         summary = get_detailed_assertion_summary(pmid)
         Path(os.path.dirname(out_path) or ".").mkdir(parents=True, exist_ok=True)
@@ -439,9 +426,8 @@ def export_summary_to_json(pmid: str, out_path: str) -> bool:
 
 
 def get_conflict_overview() -> Dict[str, Any]:
-    """
-    汇总冲突概览：PMID 总数、每 PMID 的冲突数与总冲突数。
-    （PMID 来源为“摘要 + 日志”的并集）
+    """Summarize conflict overview: total PMIDs, conflicts per PMID, and total conflicts.
+    PMIDs come from the union of abstracts and logs.
     """
     raw = _load_raw_logs()
     pmids = list({*get_all_pmids(), *_pmids_from_logs(raw)})

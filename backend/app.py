@@ -6,6 +6,7 @@ from typing import Any
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
+from dotenv import load_dotenv
 
 
 def _compute_cors_origins(app_config: dict, extra_env: str) -> list[str]:
@@ -18,6 +19,11 @@ def _compute_cors_origins(app_config: dict, extra_env: str) -> list[str]:
 
 
 def create_app() -> Flask:
+    # Load .env (if present) so MONGO_URI and others are available
+    try:
+        load_dotenv()
+    except Exception:
+        pass
     app = Flask(__name__)
 
     # === Config ===
@@ -53,10 +59,8 @@ def create_app() -> Flask:
     from backend.routes.tasks import task_api
     from backend.routes.reviewers import reviewer_api
 
-    try:
-        from backend.routes.pricing import bp as pricing_api  # type: ignore
-    except ImportError:
-        from backend.routes.pricing import pricing_api  # type: ignore
+    # pricing removed
+    pricing_api = None  # type: ignore
 
     try:
         from backend.routes.meta import bp as meta_api  # type: ignore
@@ -70,7 +74,8 @@ def create_app() -> Flask:
     app.register_blueprint(auth_api)
     app.register_blueprint(task_api)
     app.register_blueprint(reviewer_api)
-    app.register_blueprint(pricing_api)
+    if pricing_api:
+        app.register_blueprint(pricing_api)
     app.register_blueprint(meta_api)
     app.register_blueprint(export_api)
     app.register_blueprint(arbitration_api)
@@ -148,6 +153,7 @@ def create_app() -> Flask:
         "SESSION_COOKIE_SECURE",
         str(os.environ.get("SESSION_COOKIE_SECURE", "0")).lower() in ("1", "true"),
     )
+    app.config.setdefault("SESSION_COOKIE_HTTPONLY", True)
     app.config.setdefault("JSON_AS_ASCII", False)
     app.config.setdefault("JSON_SORT_KEYS", False)
 

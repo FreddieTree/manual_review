@@ -13,11 +13,14 @@ Responsibilities:
 """
 
 import time
+import random
 import threading
 from typing import Optional, Dict, List, Tuple, Any
 
 from ..config import REVIEW_TIMEOUT_MINUTES, MAX_REVIEWERS_PER_ABSTRACT, get_logger
+from ..models.logs import load_logs
 from ..models.abstracts import load_abstracts
+from ..models.db import db  # for optional cross-process locks TTL
 
 logger = get_logger("services.assignment")
 
@@ -43,6 +46,21 @@ _MAX_CONCURRENT_REVIEWERS: int = (
 
 def _now() -> float:
     return time.time()
+def get_current_pmid_for_reviewer(email: str) -> Optional[str]:
+    """Return pmid currently locked by reviewer, if any; also refresh heartbeat."""
+    email = (email or "").strip().lower()
+    if not email:
+        return None
+    now = _now()
+    with _LOCK:
+        _cleanup_expired_locked(now)
+        for pmid, lock in list(_LOCKS.items()):
+            reviewers: Dict[str, float] = lock.get("reviewers", {})
+            if email in reviewers:
+                reviewers[email] = now
+                return pmid
+    return None
+
 
 # Small helper to satisfy both tests:
 # - membership like `email in holder` must be True
@@ -130,6 +148,18 @@ def touch_assignment(email: str, pmid: str) -> bool:
             logger.debug("touch_assignment: refreshed holder %s for %s", email, pmid)
         return True
 
+    # Optional cross-process lock heartbeat using TTL collection (best-effort)
+    try:
+        expire_at = now + _DEFAULT_TIMEOUT_SECONDS
+        # store as a float; in real TTL we would use datetime, here it's illustrative
+        db["locks"].update_one(
+            {"pmid": pmid},
+            {"$set": {"pmid": pmid, "expire_at": expire_at, "reviewers": list(dict(holder).keys()) if (holder := who_has_abstract(pmid)) else []}},
+            upsert=True,
+        )
+    except Exception:
+        pass
+
 
 def assign_abstract_to_reviewer(
     email: str,
@@ -152,6 +182,14 @@ def assign_abstract_to_reviewer(
         # Clean expired first
         _cleanup_expired_locked(now)
 
+        # Enforce single-active-assignment per reviewer: if already holding one, return it
+        for pmid_existing, lock in _LOCKS.items():
+            reviewers_existing: Dict[str, float] = lock.get("reviewers", {})
+            if email in reviewers_existing:
+                reviewers_existing[email] = now
+                logger.debug("Reviewer %s already holds lock on %s; returning existing", email, pmid_existing)
+                return pmid_existing
+
         # 1) Prefer current if provided
         if prefer_current:
             pmid_cur = str(prefer_current)
@@ -170,13 +208,73 @@ def assign_abstract_to_reviewer(
                     return pmid_cur
             # no lock -> fall through
 
-        # 2) Scan all abstracts for capacity
+        # 2) Build candidate pools according to allocation rules, considering historical reviewers (max 2 total)
+        # Compute historical distinct reviewers per pmid from logs (append-only model)
+        hist_counts: Dict[str, int] = {}
+        try:
+            raw_logs = load_logs()
+            tmp: Dict[str, set] = {}
+            for log in raw_logs:
+                pid = str(log.get("pmid") or "").strip()
+                if not pid:
+                    continue
+                actor = ((log.get("creator") or log.get("reviewer") or "").strip().lower())
+                if not actor:
+                    continue
+                s = tmp.setdefault(pid, set())
+                s.add(actor)
+            hist_counts = {k: len(v) for k, v in tmp.items()}
+        except Exception:
+            hist_counts = {}
+
+        singles: List[str] = []  # abstracts with exactly 1 reviewer (not including this email) and capacity
+        empties: List[str] = []  # no lock yet
+        partials: List[str] = [] # has reviewers but capacity available (not including this email)
+
         for abstract in load_abstracts():
             pmid = str(abstract.get("pmid") or "")
             if not pmid:
                 continue
+            # Skip pmids that already reached 2 historical reviewers
+            if hist_counts.get(pmid, 0) >= 2:
+                continue
             lock = _LOCKS.get(pmid)
+            if not lock:
+                # Distinguish based on historical count for prioritization
+                if hist_counts.get(pmid, 0) == 1:
+                    singles.append(pmid)
+                else:
+                    empties.append(pmid)
+                continue
+            reviewers: Dict[str, float] = lock.setdefault("reviewers", {})
+            if email in reviewers:
+                # refresh and stick with this one
+                reviewers[email] = now
+                logger.debug("Refreshed lock for reviewer %s on abstract %s", email, pmid)
+                return pmid
+            if len(reviewers) < _MAX_CONCURRENT_REVIEWERS:
+                # Only available if not locked or capacity available; with exclusive lock, this is typically 0
+                # Prioritize pmids with exactly one historical reviewer
+                if hist_counts.get(pmid, 0) == 1:
+                    singles.append(pmid)
+                else:
+                    partials.append(pmid)
 
+        # 3) 50/50 rule: half random selection, half prioritizing singles
+        choose_single_priority = (random.random() < 0.5)
+
+        selection_order: List[str] = []
+        if choose_single_priority and singles:
+            selection_order = singles.copy()
+        else:
+            # random pool from all capacity-available (empties + singles + partials)
+            selection_order = empties + singles + partials
+
+        # randomize order for fairness
+        random.shuffle(selection_order)
+
+        for pmid in selection_order:
+            lock = _LOCKS.get(pmid)
             if not lock:
                 _LOCKS[pmid] = {
                     "reviewers": {email: now},
@@ -185,23 +283,17 @@ def assign_abstract_to_reviewer(
                 }
                 logger.info("Assigned abstract %s to reviewer %s (new)", pmid, email)
                 return pmid
-
-            reviewers: Dict[str, float] = lock.setdefault("reviewers", {})
-            history: List[Dict[str, Any]] = lock.setdefault("history", [])
-
+            reviewers = lock.setdefault("reviewers", {})
+            history = lock.setdefault("history", [])
             if email in reviewers:
                 reviewers[email] = now
                 logger.debug("Refreshed lock for reviewer %s on abstract %s", email, pmid)
                 return pmid
-
             if len(reviewers) < _MAX_CONCURRENT_REVIEWERS:
                 reviewers[email] = now
                 history.append({"email": email, "assigned_at": now, "released_at": None})
                 logger.info("Added reviewer %s to existing lock on abstract %s", email, pmid)
                 return pmid
-
-            logger.debug("Abstract %s has %d reviewers, skipping for %s", pmid, len(reviewers), email)
-            continue
 
         logger.info("No available abstract to assign to reviewer %s", email)
         return None

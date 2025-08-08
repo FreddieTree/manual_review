@@ -64,3 +64,44 @@ export async function getAdminStats({ signal } = {}) {
 
     throw new Error("Unable to load admin stats from any endpoint.");
 }
+
+// Admin actions
+export const exportConsensus = ({ signal } = {}) =>
+  get("export_consensus", { signal }, { unwrap: "full" });
+
+export const exportPassed = ({ signal } = {}) =>
+  get("export_passed", { signal }, { unwrap: "full" });
+
+export const uploadAbstracts = (payload, { signal } = {}) => {
+  // Supports multipart file upload or JSON { path, confirm }
+  // Callers must set confirm=true per backend requirement
+  const hasFile = payload instanceof FormData;
+  if (hasFile) {
+    payload.set("confirm", "true");
+    return fetch("/api/admin/upload_abstracts", {
+      method: "POST",
+      credentials: "include",
+      body: payload,
+      signal,
+    }).then(async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.success === false) throw new Error(data?.message || res.statusText);
+      return data;
+    });
+  }
+  const body = { ...(payload || {}), confirm: true };
+  return fetch("/api/admin/upload_abstracts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include",
+    signal,
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.success === false) throw new Error(data?.message || res.statusText);
+    return data;
+  });
+};
+
+export const getImportProgress = (jobId, { signal } = {}) =>
+  get(`admin/import_progress/${encodeURIComponent(jobId)}`, { signal }, { unwrap: "full" });

@@ -8,8 +8,10 @@ import React, {
 } from "react";
 import PropTypes from "prop-types";
 import clsx from "clsx";
-import { getAdminStats } from "../api/admin"; // 明确路径
+import { getAdminStats, exportConsensus, uploadAbstracts, getImportProgress } from "../api/admin"; // 明确路径
 import TopBar from "../components/TopBar";
+import Card from "../components/ui/Card";
+import Section from "../components/ui/Section";
 
 /* ------------------------- helpers / hooks ------------------------- */
 function useAdminStats({ pollInterval = 0 } = {}) {
@@ -59,19 +61,6 @@ function useAdminStats({ pollInterval = 0 } = {}) {
 }
 
 /* ------------------------- UI components ------------------------- */
-const Card = ({ children, className = "", ...rest }) => (
-  <div
-    className={clsx(
-      "bg-white/90 dark:bg-slate-900/60 rounded-2xl shadow-xl",
-      "border border-gray-100 dark:border-slate-800 p-6 backdrop-blur-sm",
-      className
-    )}
-    {...rest}
-  >
-    {children}
-  </div>
-);
-
 const StatCard = ({ label, value, loading, extra, Icon }) => {
   return (
     <div className="flex flex-col justify-between gap-2">
@@ -111,6 +100,13 @@ function AdminPageImpl(_, ref) {
   const { stats, loading, error, refresh, lastUpdated } = useAdminStats({
     pollInterval: 0,
   });
+
+  const [exporting, setExporting] = React.useState(false);
+  const [exportMsg, setExportMsg] = React.useState("");
+  const [uploadMsg, setUploadMsg] = React.useState("");
+  const [uploading, setUploading] = React.useState(false);
+  const [jobStatus, setJobStatus] = React.useState(null);
+  const jobRef = useRef(null);
 
   const reviewedRatio =
     typeof stats?.reviewed_ratio === "number"
@@ -170,6 +166,34 @@ function AdminPageImpl(_, ref) {
               <div className="rounded-full bg-emerald-100 text-emerald-800 px-4 py-2 text-sm font-semibold">
                 No conflicts
               </div>
+            )}
+            <button
+              onClick={async () => {
+                setExporting(true);
+                setExportMsg("");
+                try {
+                  const body = await exportConsensus({});
+                  const ok = body && body.success !== false;
+                  const path = body?.path || body?.data?.path;
+                  const count = body?.exported_count || body?.data?.exported_count;
+                  setExportMsg(ok ? `Exported${count ? ` ${count}` : ""}${path ? ` → ${path}` : ""}` : (body?.message || "Export failed"));
+                } catch (e) {
+                  setExportMsg(e?.message || "Export failed");
+                } finally {
+                  setExporting(false);
+                }
+              }}
+              disabled={exporting}
+              className={clsx(
+                "inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition",
+                "bg-emerald-600 hover:bg-emerald-700 text-white",
+                exporting && "opacity-60 cursor-not-allowed"
+              )}
+            >
+              {exporting ? "Exporting…" : "Export Consensus"}
+            </button>
+            {exportMsg && (
+              <div className="text-xs text-gray-600">{exportMsg}</div>
             )}
           </div>
         </div>
@@ -338,26 +362,54 @@ function AdminPageImpl(_, ref) {
                   {arbitrationCount} pending
                 </div>
               </a>
-              <a
-                href="/admin/export"
-                className="flex items-center justify-between gap-2 px-4 py-3 bg-white dark:bg-slate-800 border rounded-lg shadow hover:shadow-lg transition"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">📤</span>
-                  <div className="text-sm font-medium">Export Data</div>
+              <div className="flex flex-col gap-2 px-4 py-3 bg-white dark:bg-slate-800 border rounded-lg shadow">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">📥</span>
+                    <div className="text-sm font-medium">Upload Abstracts</div>
+                  </div>
+                  <div className="text-xs text-gray-500">{uploadMsg}</div>
                 </div>
-                <div className="text-xs text-gray-500">Consensus</div>
-              </a>
-              <a
-                href="/admin/locks"
-                className="flex items-center justify-between gap-2 px-4 py-3 bg-white dark:bg-slate-800 border rounded-lg shadow hover:shadow-lg transition"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xl">🔐</span>
-                  <div className="text-sm font-medium">View Locks</div>
-                </div>
-                <div className="text-xs text-gray-500">In-flight</div>
-              </a>
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    const file = e.currentTarget.elements?.file?.files?.[0];
+                    setUploading(true);
+                    setUploadMsg("");
+                    try {
+                      const fd = new FormData();
+                      if (file) fd.append("file", file);
+                      const data = await uploadAbstracts(fd);
+                      const jobId = data?.job_id;
+                      jobRef.current = jobId;
+                      setUploadMsg(jobId ? `Queued: ${jobId}` : "Uploaded");
+                      if (jobId) {
+                        const t = setInterval(async () => {
+                          try {
+                            const prog = await getImportProgress(jobId, {});
+                            const payload = prog?.data || prog?.progress || prog;
+                            setJobStatus(payload);
+                            if (payload?.done) clearInterval(t);
+                          } catch {}
+                        }, 1500);
+                      }
+                    } catch (err) {
+                      setUploadMsg(err?.message || "Upload failed");
+                    } finally {
+                      setUploading(false);
+                    }
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <input name="file" type="file" accept=".jsonl" disabled={uploading} />
+                  <button type="submit" disabled={uploading} className="px-3 py-1.5 text-sm rounded border border-gray-300 hover:bg-gray-50">
+                    {uploading ? "Uploading…" : "Upload"}
+                  </button>
+                </form>
+                {jobStatus && (
+                  <div className="text-xs text-gray-600">{JSON.stringify(jobStatus)}</div>
+                )}
+              </div>
             </div>
           </Card>
         </div>

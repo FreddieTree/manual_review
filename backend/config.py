@@ -72,13 +72,15 @@ SESSION_COOKIE_HTTPONLY: bool = _env_bool("SESSION_COOKIE_HTTPONLY", True)
 
 # ---- reviewer / task settings ---------------------------------------------
 
-REVIEW_TIMEOUT_MINUTES: int = _env_int("MANUAL_REVIEW_TIMEOUT", 30)
-MAX_REVIEWERS_PER_ABSTRACT: int = _env_int("MANUAL_REVIEWERS_PER_ABSTRACT", 2)
+# Lock duration: 60 minutes default (1 hour)
+REVIEW_TIMEOUT_MINUTES: int = _env_int("MANUAL_REVIEW_TIMEOUT", 60)
+# Concurrency per abstract: default 1 (exclusive lock); total reviewers across time is a process rule, not enforced here
+MAX_REVIEWERS_PER_ABSTRACT: int = _env_int("MANUAL_REVIEWERS_PER_ABSTRACT", 1)
 
-# ---- rewards ---------------------------------------------------------------
+# ---- rewards (legacy placeholders; pricing removed) ------------------------
 
-REWARD_PER_ABSTRACT: float = _env_float("REWARD_PER_ABSTRACT", 0.3)
-REWARD_PER_ASSERTION_ADD: float = _env_float("REWARD_PER_ASSERTION_ADD", 0.05)
+REWARD_PER_ABSTRACT: float = _env_float("REWARD_PER_ABSTRACT", 0.0)
+REWARD_PER_ASSERTION_ADD: float = _env_float("REWARD_PER_ASSERTION_ADD", 0.0)
 
 # ---- vocab ---------------------------------------------------------------
 
@@ -138,22 +140,23 @@ def get_logger(name: Optional[str] = None) -> logging.Logger:
     logger.setLevel(level)
     return logger
 
-# ---- pricing helper --------------------------------------------------------
+# ---- descriptor helper (legacy, retained for minimal breakage) -------------
 
 def get_default_pricing_descriptor(abstract_obj: Optional[dict]) -> dict:
+    """Return a neutral descriptor; pricing is removed but some callers use shape."""
     sentence_count = 0
     if abstract_obj:
         sentence_count = abstract_obj.get("sentence_count") or len(abstract_obj.get("sentence_results", []))
-    base = round(REWARD_PER_ABSTRACT, 3)
-    per_assertion = round(REWARD_PER_ASSERTION_ADD, 3)
-    estimated_total = round(base + sentence_count * 0.01, 3)
     return {
-        "per_abstract": base,
-        "per_assertion_add": per_assertion,
+        "per_abstract": 0.0,
+        "per_assertion_add": 0.0,
         "sentence_count": sentence_count,
-        "total_base": base,
-        "estimated_for_this": estimated_total,
-        "currency": "£",
+        "total_base": 0.0,
+        "estimated_for_this": 0.0,
+        "currency": "GBP",
+        "amount": 0.0,
+        "units": {},
+        "pmid": abstract_obj.get("pmid") if isinstance(abstract_obj, dict) else None,
     }
 
 # ---- feature flags ---------------------------------------------------------

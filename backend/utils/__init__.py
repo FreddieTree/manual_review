@@ -8,17 +8,17 @@ from typing import Any, Iterable, Iterator, List, Optional, Tuple, Union
 
 DEFAULT_EMAIL_DOMAIN = "bristol.ac.uk"
 
-# 预编译基础邮箱正则（简化版 RFC）
+# Precompiled email regex (simplified RFC)
 _EMAIL_RE = re.compile(r"^[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}$", re.IGNORECASE)
 
 
 def _domain_matches(domain: str, allowed: Union[str, Iterable[str]]) -> bool:
-    """
-    支持三种形式（allowed 可以是 str / list / tuple / set）：
-      1) 精确匹配: "bristol.ac.uk"
-      2) 通配后缀: "*.bristol.ac.uk"  -> 允许 a.bristol.ac.uk（不包含 bristol.ac.uk）
-      3) 后缀匹配: ".bristol.ac.uk"   -> 允许 a.bristol.ac.uk 与 bristol.ac.uk
-    `domain` 可接受 email 或裸域名，email 会自动提取 @ 之后的部分。
+    """Domain matching helper supporting three forms (allowed may be str/list/tuple/set):
+    1) Exact match: "bristol.ac.uk"
+    2) Wildcard subdomain: "*.bristol.ac.uk" -> allows a.bristol.ac.uk (not the bare domain)
+    3) Suffix match: ".bristol.ac.uk" -> allows both bristol.ac.uk and subdomains
+
+    The `domain` parameter may be an email or a bare domain; if email, the part after '@' is used.
     """
     d = (domain or "").strip().lower()
     if "@" in d:
@@ -29,11 +29,11 @@ def _domain_matches(domain: str, allowed: Union[str, Iterable[str]]) -> bool:
         if not p:
             return False
         if p.startswith("*."):
-            # 子域匹配，不包括根域
+            # Subdomain-only match, not including the root domain
             suf = p[2:]
             return d.endswith("." + suf)
         if p.startswith("."):
-            # 后缀匹配，包含根域
+            # Suffix match including the root domain
             suf = p[1:]
             return d == suf or d.endswith("." + suf)
         return d == p
@@ -44,9 +44,7 @@ def _domain_matches(domain: str, allowed: Union[str, Iterable[str]]) -> bool:
 
 
 def normalize_email(raw: Any) -> str:
-    """
-    统一邮箱大小写与空白；非法输入返回空串。
-    """
+    """Normalize email lowercasing and whitespace; invalid input returns empty string."""
     if not isinstance(raw, str):
         return ""
     return raw.strip().lower()
@@ -57,12 +55,11 @@ def is_valid_email(
     *,
     restrict_domain: bool = True,
     allowed_domains: Iterable[str] = (DEFAULT_EMAIL_DOMAIN,),
-    allow_suffix_match: bool = True,  # 启用后缀/通配匹配
+    allow_suffix_match: bool = True,  # Enable suffix/wildcard matching
 ) -> bool:
-    """
-    基础邮箱校验。默认限制域名（如 bristol.ac.uk）。
-    - restrict_domain=False 时跳过域限制
-    - allowed_domains 可包含精确域、".suffix" 或 "*.suffix"
+    """Basic email validation. Defaults to enforcing an allowed domain list.
+    - When restrict_domain=False, skip domain restrictions
+    - allowed_domains may include exact domain, ".suffix" or "*.suffix"
     """
     if not isinstance(email, str):
         return False
@@ -78,7 +75,7 @@ def is_valid_email(
     except Exception:
         return False
 
-    # 支持从 config 动态读取允许域（若存在）
+    # Supports reading allowed domains from config dynamically if available
     try:
         from ..config import EMAIL_ALLOWED_DOMAINS as _CONF_ALLOWED  # 延迟导入避免环依赖
         if _CONF_ALLOWED:
@@ -99,10 +96,7 @@ def is_valid_email(
 # ==== String normalization ==================================================
 
 def normalize_str(s: Any) -> str:
-    """
-    归一化字符串：转小写、去首尾空白、折叠连续空白。
-    非字符串尝试转字符串；失败返回空串。
-    """
+    """Normalize string: lowercase, strip, collapse whitespace. Non-strings are cast; failures return empty string."""
     if s is None:
         return ""
     if not isinstance(s, str):
@@ -116,9 +110,8 @@ def normalize_str(s: Any) -> str:
 # ==== Boolean coercion ======================================================
 
 def coerce_bool(val: Any) -> bool:
-    """
-    将多种表示转为布尔。
-    接受: bool, 数值, 字符串 ("true","1","yes","on"...)
+    """Coerce multiple representations into boolean.
+    Accepts: bool, numbers, strings ("true","1","yes","on"...)
     """
     if isinstance(val, bool):
         return val
@@ -149,8 +142,7 @@ def safe_float(val: Any, default: float = 0.0) -> float:
 # ==== Misc utilities ========================================================
 
 def safe_get(d: dict, *keys, default=None):
-    """
-    安全地穿透多层 dict：
+    """Safe nested dict getter:
     safe_get(obj, 'a', 'b', 'c') == obj.get('a', {}).get('b', {}).get('c', default)
     """
     cur = d
@@ -162,10 +154,7 @@ def safe_get(d: dict, *keys, default=None):
 
 
 def chunked(iterable: Iterable, size: int) -> Iterator[List[Any]]:
-    """
-    将可迭代对象按 size 切块依次产出。
-    注意：size 必须 >= 1。
-    """
+    """Yield chunks of the iterable of given size (size must be >= 1)."""
     if size < 1:
         raise ValueError("chunk size must be >= 1")
 
@@ -192,5 +181,5 @@ __all__ = [
     "safe_float",
     "safe_get",
     "chunked",
-    "_domain_matches",  # 测试中会直接引用
+    "_domain_matches",  # tests may directly import this
 ]

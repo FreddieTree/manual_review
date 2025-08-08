@@ -5,6 +5,7 @@ import uuid
 import copy
 import time
 from typing import Any, Dict, List
+import hashlib
 
 __all__ = [
     "make_assertion_id",
@@ -29,6 +30,34 @@ def make_assertion_id(subject: str, subject_type: str, predicate: str, object_: 
     """
     return f"{subject}|{subject_type}|{predicate}|{object_}|{object_type}"
 
+
+def compute_content_hash(
+    *,
+    pmid: str | int,
+    sentence_idx: int,
+    subject: str,
+    subject_type: str,
+    predicate: str,
+    object_: str,
+    object_type: str,
+) -> str:
+    """
+    Canonical unique identifier per requirements:
+    hash(lower(trim(subject)), lower(trim(subject_type)), lower(trim(predicate)), lower(trim(object)), lower(trim(object_type)), sentence_index, pmid)
+    joined in order and hashed (sha1) to a hex string.
+    """
+    parts = [
+        str(pmid).strip().lower(),
+        str(sentence_idx).strip().lower(),
+        (subject or "").strip().lower(),
+        (subject_type or "").strip().lower(),
+        (predicate or "").strip().lower(),
+        (object_ or "").strip().lower(),
+        (object_type or "").strip().lower(),
+    ]
+    joined = "|".join(parts)
+    return hashlib.sha1(joined.encode("utf-8")).hexdigest()
+
 # ---------------------------------------------------------------------------
 # Constructors for atomic log records
 # ---------------------------------------------------------------------------
@@ -50,6 +79,16 @@ def new_assertion(
     """
     Create an 'add' log entry for a newly proposed assertion.
     """
+    content_hash = compute_content_hash(
+        pmid=pmid,
+        sentence_idx=sentence_idx,
+        subject=subject,
+        subject_type=subject_type,
+        predicate=predicate,
+        object_=object_,
+        object_type=object_type,
+    )
+
     return {
         "version": 1,
         "assertion_id": str(uuid.uuid4()),
@@ -69,6 +108,7 @@ def new_assertion(
         "negation": bool(negation),
 
         "comment": comment,
+        "content_hash": content_hash,
         "created_at": _now_ts(),
 
         # 便于后续审计/展示（新增时为空）
@@ -127,6 +167,15 @@ def update_assertion(
         "negation": bool(updated.get("negation", False)),
 
         "comment": comment,
+        "content_hash": compute_content_hash(
+            pmid=pmid,
+            sentence_idx=sentence_idx,
+            subject=updated.get("subject"),
+            subject_type=updated.get("subject_type"),
+            predicate=updated.get("predicate"),
+            object_=updated.get("object"),
+            object_type=updated.get("object_type"),
+        ),
         "created_at": _now_ts(),
 
         "changed_fields": changed,  # ⭐️ 便于后续仲裁/审计
@@ -164,6 +213,15 @@ def reject_assertion(
         "negation": bool(original.get("negation", False)),
 
         "reason": reason,
+        "content_hash": compute_content_hash(
+            pmid=pmid,
+            sentence_idx=sentence_idx,
+            subject=original.get("subject"),
+            subject_type=original.get("subject_type"),
+            predicate=original.get("predicate"),
+            object_=original.get("object"),
+            object_type=original.get("object_type"),
+        ),
         "created_at": _now_ts(),
     }
 
@@ -199,5 +257,14 @@ def uncertain_assertion(
         "negation": bool(original.get("negation", False)),
 
         "comment": comment,
+        "content_hash": compute_content_hash(
+            pmid=pmid,
+            sentence_idx=sentence_idx,
+            subject=original.get("subject"),
+            subject_type=original.get("subject_type"),
+            predicate=original.get("predicate"),
+            object_=original.get("object"),
+            object_type=original.get("object_type"),
+        ),
         "created_at": _now_ts(),
     }

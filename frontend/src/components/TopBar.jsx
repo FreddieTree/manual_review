@@ -1,13 +1,13 @@
 import React, { useState, useCallback, useMemo, forwardRef, memo, useEffect } from "react";
 import PropTypes from "prop-types";
 import clsx from "clsx";
-import PricingDisplay from "./PricingDisplay";
+// Pricing removed
 import ConfirmModal from "./ConfirmModal";
 import { Listbox } from "@headlessui/react";
 import { ChevronDownIcon } from "@heroicons/react/24/solid";
 import { useUser } from "../hooks/useUser";
 import { useNavigate, useLocation } from "react-router-dom";
-import { client } from "../api/client";
+import { getReviewers } from "../api";
 
 const systemFont = "system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
 const LOGIN_PATH = (import.meta.env.VITE_LOGIN_PATH || "/").replace(/\/+$/, "") || "/";
@@ -31,18 +31,10 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
         if (user?.is_admin) {
             setReviewersLoading(true);
             setReviewersError(null);
-            client
-                .get("reviewers?per_page=200")
-                .then((res) => {
-                    const listRaw = Array.isArray(res?.reviewers)
-                        ? res.reviewers
-                        : Array.isArray(res?.data?.reviewers)
-                            ? res.data.reviewers
-                            : [];
-                    const list = (listRaw || []).map((r) => ({
-                        name: (r.name || r.email || "").trim(),
-                        email: (r.email || "").toLowerCase(),
-                    }));
+            getReviewers({ query: { per_page: 200 } })
+                .then((data) => {
+                    const listRaw = Array.isArray(data?.reviewers) ? data.reviewers : Array.isArray(data) ? data : [];
+                    const list = listRaw.map((r) => ({ name: (r.name || r.email || "").trim(), email: (r.email || "").toLowerCase() }));
                     if (cancelled) return;
                     setReviewersList(list);
                     if (list.length) setSelectedReviewer(list[0]);
@@ -89,13 +81,7 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
         return "there";
     }, [user, userLoading]);
 
-    const pricingTitle = useMemo(() => {
-        if (user?.is_admin) {
-            if (selectedReviewer) return `Pricing for ${selectedReviewer.name}`;
-            return "All reviewers pricing";
-        }
-        return "Your pricing";
-    }, [user, selectedReviewer]);
+    // Pricing removed
 
     return (
         <>
@@ -221,16 +207,7 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
                         </div>
                     )}
 
-                    <div className="flex flex-col items-end space-y-1">
-                        <div className="text-[11px] text-gray-500 dark:text-gray-400 font-medium">{pricingTitle}</div>
-                        <div className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-1.5 shadow-sm">
-                            {user?.is_admin ? (
-                                <PricingDisplay abstractId={pmid} compact reviewerEmail={selectedReviewer?.email} showTooltip />
-                            ) : (
-                                <PricingDisplay abstractId={pmid} compact showTooltip />
-                            )}
-                        </div>
-                    </div>
+                    {/* Pricing removed */}
 
                     <button
                         aria-label="Exit"

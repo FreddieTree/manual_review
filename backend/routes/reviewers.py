@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, request, jsonify, session
+import time
 from functools import wraps
 from typing import Any, Dict, Optional, Tuple, List
 
@@ -14,6 +15,7 @@ from ..models.reviewers import (
 )
 from ..utils import is_valid_email
 from ..config import get_logger, EMAIL_ALLOWED_DOMAINS
+from ..models.logs import log_review_action
 
 reviewer_api = Blueprint("reviewer_api", __name__, url_prefix="/api/reviewers")
 logger = get_logger("routes.reviewer_api")
@@ -187,6 +189,16 @@ def add_reviewer_route():
         _add_reviewer(email=email, name=name, active=active, role=role, note=note)
         actor = session.get("email", "unknown")
         logger.info("Reviewer %s added by %s", email, actor)
+        # audit log
+        try:
+            log_review_action({
+                "action": "admin_whitelist_add",
+                "target_email": email,
+                "by": actor,
+                "created_at": time.time(),
+            })
+        except Exception:
+            pass
         return _resp(True, data={"email": email}, message="Reviewer added")
     except ValueError as e:
         # reviewer already exists / invalid field
@@ -224,7 +236,8 @@ def update_reviewer_route(email: str):
     if "active" in payload:
         update_fields["active"] = bool(payload.get("active"))
     if "role" in payload:
-        update_fields["role"] = _sanitize_role(payload.get("role"))
+        # Admin roles cannot be escalated via API; whitelist-only reviewers here
+        update_fields["role"] = "reviewer"
     if "note" in payload:
         update_fields["note"] = str(payload.get("note", "") or "")
 
@@ -241,6 +254,16 @@ def update_reviewer_route(email: str):
         _update_reviewer(email=normalized, fields=update_fields)
         actor = session.get("email", "unknown")
         logger.info("Reviewer %s updated by %s (%s)", normalized, actor, update_fields)
+        try:
+            log_review_action({
+                "action": "admin_whitelist_update",
+                "target_email": normalized,
+                "fields": update_fields,
+                "by": actor,
+                "created_at": time.time(),
+            })
+        except Exception:
+            pass
         return _resp(True, data={"email": normalized}, message="Reviewer updated")
     except ValueError as e:
         # 其他业务性错误 -> 400
@@ -261,6 +284,15 @@ def delete_reviewer_route(email: str):
         _delete_reviewer(email=normalized)
         actor = session.get("email", "unknown")
         logger.info("Reviewer %s deleted by %s", normalized, actor)
+        try:
+            log_review_action({
+                "action": "admin_whitelist_delete",
+                "target_email": normalized,
+                "by": actor,
+                "created_at": time.time(),
+            })
+        except Exception:
+            pass
         return _resp(True, message="Reviewer deleted")
     except Exception:
         logger.exception("Failed to delete reviewer %s", normalized)

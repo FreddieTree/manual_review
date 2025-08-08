@@ -170,7 +170,8 @@ def set_arbitration_result(
     if normalized not in {"accept", "modify", "reject", "uncertain"}:
         raise ArbitrationError(f"Unsupported arbitration decision: {decision}")
 
-    # 如果不允许覆盖：需确认在冲突列表中；若已有相同仲裁则直接返回
+    # Append-only policy: no destructive overwrite. If not overwrite, require conflict membership;
+    # if the same decision exists already, return latest.
     if not overwrite:
         conflicts = find_assertion_conflicts(pmid)  # 仅扫描该 pmid（配合我们上游聚合，日志也能识别）
         conflict_keys = {c["assertion_key"] for c in conflicts}
@@ -200,6 +201,7 @@ def set_arbitration_result(
         "comment": comment or "",
         "prior_consensus_status": prior_status,
         "created_at": time.time(),
+        # traceability fields will be backfilled in logs module if request context exists
     }
 
     log_review_action(record)

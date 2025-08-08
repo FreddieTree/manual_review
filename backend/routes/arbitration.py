@@ -27,6 +27,9 @@ def _require_admin() -> Optional[tuple]:
 
 @arbitration_api.get("/queue")
 def api_arbitration_queue():
+    guard = _require_admin()
+    if guard:
+        return guard
     """
     获取仲裁队列（公开）。支持查询参数：
       - pmid
@@ -72,7 +75,8 @@ def api_arbitrate():
     assertion_key = data.get("assertion_key") or data.get("assertion_id")
     decision = data.get("decision")
     comment = data.get("comment", "")
-    overwrite = bool(data.get("overwrite", False))
+    # Enforce append-only arbitration without overwrite capability
+    overwrite = False
     admin = session.get("email")
 
     try:
@@ -141,6 +145,9 @@ arbitration_compat_api = Blueprint("arbitration_compat_api", __name__)
 
 @arbitration_compat_api.get("/api/arbitration_queue")
 def api_arbitration_queue_compat():
+    # Restrict to admin for security; legacy route returns empty list on failure
+    if not session.get("is_admin"):
+        return jsonify([]), 403
     try:
         # 同样先失效缓存，保持行为一致
         try:

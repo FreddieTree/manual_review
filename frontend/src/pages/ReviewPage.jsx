@@ -10,14 +10,18 @@ import React, {
 import PropTypes from "prop-types";
 import clsx from "clsx";
 
-import { getAssignedAbstract, submitReview } from "../api";
+import { getAssignedAbstract, submitReview, heartbeat, releaseAssignment } from "../api";
 import AbstractMetaCard from "../components/AbstractMetaCard";
 import AssertionEditor from "../components/AssertionEditor";
 import AssertionSummaryPanel from "../components/AssertionSummaryPanel";
 import DecisionBadge from "../components/DecisionBadge";
 import TopBar from "../components/TopBar";
+import Card from "../components/ui/Card";
+import Section from "../components/ui/Section";
 import ConfirmModal from "../components/ConfirmModal";
+import Button from "../components/ui/Button";
 import { deriveOverallDecision } from "../utils";
+import { getVocab } from "../api/meta";
 
 const STATUS = {
   LOADING: "loading",
@@ -32,6 +36,8 @@ const STATUS = {
 function ReviewPageImpl(_, ref) {
   const [abstract, setAbstract] = useState(null);
   const [reviewStatesMap, setReviewStatesMap] = useState({});
+  const [predicateWhitelist, setPredicateWhitelist] = useState(null);
+  const [entityTypeWhitelist, setEntityTypeWhitelist] = useState(null);
   const [statusMsg, setStatusMsg] = useState("");
   const [statusType, setStatusType] = useState(STATUS.LOADING);
   const [submitting, setSubmitting] = useState(false);
@@ -77,7 +83,14 @@ function ReviewPageImpl(_, ref) {
 
       // 支持 { abstract: {...} } 或 直接扁平 {...}
       const raw = parsed?.abstract ?? parsed;
-      if (!raw) throw new Error("No assigned abstract.");
+      if (!raw) {
+        // Handle no more tasks contract
+        if (parsed?.no_more_tasks || parsed?.data?.no_more_tasks) {
+          window.location.assign("/no_more_tasks");
+          return;
+        }
+        throw new Error("No assigned abstract.");
+      }
       const a = { ...raw };
 
       if (!Array.isArray(a.sentence_results)) a.sentence_results = [];
@@ -130,9 +143,25 @@ function ReviewPageImpl(_, ref) {
   useEffect(() => {
     isMountedRef.current = true;
     loadAbstract();
+    // fetch vocab once
+    (async () => {
+      try {
+        const vocab = await getVocab({});
+        // Expect shape: { predicates: string[], entity_types: string[] } or similar
+        const preds = Array.isArray(vocab?.predicates) ? vocab.predicates : Array.isArray(vocab) ? vocab : [];
+        const types = Array.isArray(vocab?.entity_types) ? vocab.entity_types : [];
+        setPredicateWhitelist(preds);
+        setEntityTypeWhitelist(types);
+      } catch {}
+    })();
+    // keep lock alive while on page
+    const iv = setInterval(() => {
+      heartbeat().catch(() => {});
+    }, 25000);
     return () => {
       isMountedRef.current = false;
       reqIdRef.current += 1; // 使未完成请求失效
+      clearInterval(iv);
     };
   }, [loadAbstract]);
 
@@ -345,38 +374,33 @@ function ReviewPageImpl(_, ref) {
         ref={ref}
         className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-sky-50 to-blue-100 px-4"
       >
-        <div className="bg-white rounded-2xl shadow-xl p-8 max-w-md w-full text-center space-y-4">
-          <div className="text-2xl font-semibold">Loading abstract…</div>
-          <div className="text-gray-600">
-            {statusMsg || "Please wait while we prepare your review."}
-          </div>
-        </div>
+        <Card className="max-w-md w-full text-center space-y-3 p-8">
+          <Section title="Loading abstract…">
+            <p className="text-gray-600">{statusMsg || "Please wait while we prepare your review."}</p>
+          </Section>
+        </Card>
       </div>
     );
   }
 
   if (!abstract) {
     return (
-      <div
-        ref={ref}
-        className="min-h-screen flex items-center justify-center px-4"
-      >
-        <div className="bg-white shadow rounded-2xl p-8 max-w-lg text-center">
-          <div className="text-xl font-bold mb-2">No abstract assigned</div>
-          <div className="text-gray-600 mb-4">
-            It looks like you don't have an active assignment. You can reload or
-            return to login.
-          </div>
-          <div className="flex justify-center gap-3">
-            <button
-              onClick={loadAbstract}
-              className="px-4 py-2 bg-green-500 text-white rounded-md hover:brightness-105 transition"
-            >
-              Retry
-            </button>
-            <button className="px-4 py-2 border rounded-md">Go to Login</button>
-          </div>
-        </div>
+      <div ref={ref} className="min-h-screen flex items-center justify-center px-4">
+        <Card className="max-w-lg w-full text-center p-8">
+          <Section title="No abstract assigned">
+            <p className="text-gray-600 mb-4">
+              It looks like you don't have an active assignment. You can reload or return to login.
+            </p>
+            <div className="flex justify-center gap-3">
+              <Button size="sm" onClick={loadAbstract}>
+                Retry
+              </Button>
+              <Button as="a" href="/login" size="sm" variant="outline">
+                Go to Login
+              </Button>
+            </div>
+          </Section>
+        </Card>
       </div>
     );
   }
@@ -397,17 +421,21 @@ function ReviewPageImpl(_, ref) {
 
       <div className="w-full max-w-[1100px] flex flex-col gap-8">
         {/* Abstract metadata */}
-        <div data-testid="AbstractMetaCard">
-          <AbstractMetaCard {...abstract} highlight={[]} />
-        </div>
+        <Card data-testid="AbstractMetaCard" className="p-0">
+          <Section title="Abstract">
+            <div className="px-6 pb-6 pt-2">
+              <AbstractMetaCard {...abstract} highlight={[]} />
+            </div>
+          </Section>
+        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-[2fr_1fr] gap-8">
           {/* Left content */}
           <div className="flex flex-col gap-6">
             {sentenceResults.length === 0 && (
-              <div className="text-center py-12 text-gray-500 rounded-lg bg-white/60">
-                No sentences available for this abstract.
-              </div>
+              <Card className="text-center py-12">
+                <p className="text-gray-500">No sentences available for this abstract.</p>
+              </Card>
             )}
             {sentenceResults.map((s, i) => (
               <AssertionEditor
@@ -416,6 +444,8 @@ function ReviewPageImpl(_, ref) {
                 sentence={s.sentence}
                 assertions={s.assertions || []}
                 reviewState={reviewStatesMap[s.sentence_index] || []}
+                predicateWhitelist={predicateWhitelist}
+                entityTypeWhitelist={entityTypeWhitelist}
                 onAddAssertion={handleAddAssertion}
                 onModifyAssertion={handleModifyAssertion}
                 onDeleteAssertion={handleDeleteAssertion}
@@ -426,39 +456,35 @@ function ReviewPageImpl(_, ref) {
 
           {/* Summary panel sticky */}
           <div className="sticky top-32">
-            <AssertionSummaryPanel
-              sentenceResults={sentenceResults}
-              reviewStatesMap={reviewStatesMap}
-              overallDecision={overallDecision}
-            />
+            <Card>
+              <Section title="Summary">
+                <AssertionSummaryPanel
+                  sentenceResults={sentenceResults}
+                  reviewStatesMap={reviewStatesMap}
+                  overallDecision={overallDecision}
+                />
+              </Section>
+            </Card>
           </div>
         </div>
 
         {/* Footer / submit */}
-        <div className="flex flex-wrap justify-between items-center gap-4 mt-2">
-          <div className="text-sm text-gray-600 flex-1" aria-live="polite">
-            {statusMsg}
-          </div>
-          <div className="flex gap-4 items-center flex-wrap">
-            <div className="hidden md:flex flex-col text-right">
-              <div className="text-[10px] text-gray-500">Overall decision</div>
-              <DecisionBadge decision={overallDecision} />
+        <Card className="mt-2">
+          <div className="flex flex-wrap justify-between items-center gap-4">
+            <div className="text-sm text-gray-600 flex-1" aria-live="polite">
+              {statusMsg}
             </div>
-            <button
-              onClick={handleSubmit}
-              disabled={submitting}
-              aria-label="Submit review"
-              className={clsx(
-                "relative flex items-center gap-2 px-7 py-3 rounded-full font-semibold transition shadow-lg",
-                submitting
-                  ? "bg-gray-300 text-gray-600 cursor-not-allowed"
-                  : "bg-gradient-to-r from-green-500 to-teal-400 text-white hover:scale-[1.02]"
-              )}
-            >
-              {submitting ? "Submitting…" : "Submit Review"}
-            </button>
+            <div className="flex gap-4 items-center flex-wrap">
+              <div className="hidden md:flex flex-col text-right">
+                <div className="text-[10px] text-gray-500">Overall decision</div>
+                <DecisionBadge decision={overallDecision} />
+              </div>
+              <Button onClick={handleSubmit} loading={submitting} aria-label="Submit review">
+                Submit Review
+              </Button>
+            </div>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Confirm: submit when not ACCEPT */}
@@ -481,10 +507,12 @@ function ReviewPageImpl(_, ref) {
         open={confirmExitOpen}
         title="Exit review"
         description="You have unsaved changes. Exit anyway?"
-        confirmText="Exit"
+        confirmText="Exit and release"
         intent="danger"
         onConfirm={() => {
           setConfirmExitOpen(false);
+          // release current assignment explicitly
+          releaseAssignment().catch(() => {});
         }}
         onCancel={() => setConfirmExitOpen(false)}
       />

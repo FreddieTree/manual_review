@@ -7,12 +7,7 @@ import Select from "./ui/Select";
 import Badge from "./ui/Badge";
 import Input from "./ui/Input";
 import ConfirmModal from "./ConfirmModal";
-import {
-    isPerfectMatch,
-    PREDICATE_WHITELIST,
-    ENTITY_TYPE_WHITELIST,
-    deriveOverallDecision,
-} from "../utils";
+import { isPerfectMatch, deriveOverallDecision } from "../utils";
 
 /** DecisionBadge now maps to semantic badge props */
 const DecisionBadge = memo(function DecisionBadge({ decision }) {
@@ -73,6 +68,8 @@ function AssertionEditorImpl(
         onModifyAssertion,
         onDeleteAssertion,
         onReviewChange,
+        predicateWhitelist,
+        entityTypeWhitelist,
     },
     ref
 ) {
@@ -162,9 +159,9 @@ function AssertionEditorImpl(
                     assertions.map((a, i) => {
                         const subjectMatch = isPerfectMatch(sentence, a.subject);
                         const objectMatch = isPerfectMatch(sentence, a.object);
-                        const predicateValid = PREDICATE_WHITELIST.includes(a.predicate);
-                        const subjectTypeValid = ENTITY_TYPE_WHITELIST.includes(a.subject_type);
-                        const objectTypeValid = ENTITY_TYPE_WHITELIST.includes(a.object_type);
+                        const predicateValid = Array.isArray(predicateWhitelist) ? predicateWhitelist.includes(a.predicate) : true;
+                        const subjectTypeValid = Array.isArray(entityTypeWhitelist) ? entityTypeWhitelist.includes(a.subject_type) : true;
+                        const objectTypeValid = Array.isArray(entityTypeWhitelist) ? entityTypeWhitelist.includes(a.object_type) : true;
                         const review = localReviews[i] || { decision: "accept", comment: "", isModified: false };
 
                         return (
@@ -346,6 +343,8 @@ function AssertionEditorImpl(
                             });
                         }}
                         submitLabel="Add Assertion"
+                        predicateWhitelist={predicateWhitelist}
+                        entityTypeWhitelist={entityTypeWhitelist}
                     />
                 ) : (
                     <div className="text-xs text-gray-500 dark:text-gray-400">
