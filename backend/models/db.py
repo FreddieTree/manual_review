@@ -1,5 +1,11 @@
 # backend/models/db.py
 import os
+try:
+    # Load environment from .env if present (helps local dev)
+    from dotenv import load_dotenv  # type: ignore
+    load_dotenv()
+except Exception:
+    pass
 from pymongo import MongoClient
 from pymongo.errors import PyMongoError
 
@@ -10,7 +16,7 @@ from pymongo.errors import PyMongoError
 
 MONGO_URI = os.environ.get("MONGO_URI")
 if not MONGO_URI:
-    raise RuntimeError("MONGO_URI is required. Please set it in your environment.")
+    raise RuntimeError("MONGO_URI is required. Please set it in your environment (e.g., export MONGO_URI=... or put it in a .env file).")
 
 DB_NAME = os.environ.get("MONGO_DB_NAME", "assertion_review")
 

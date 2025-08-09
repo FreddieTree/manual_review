@@ -13,8 +13,10 @@ from backend.config import (
     FINAL_EXPORT_PATH,
 )
 from backend.services.export_service import export_passed_assertions
+from backend.models.db import abstracts_col
 from backend.services.import_service import start_import_job, get_import_progress
 from backend.models.logs import log_review_action
+from backend.services.stats import compute_platform_analytics
 
 admin_api = Blueprint("admin_api", __name__, url_prefix="/api/admin")
 
@@ -38,7 +40,11 @@ def admin_stats():
     guard = _require_admin_resp()
     if guard:
         return guard
-    total_abstracts = _count_jsonl(Path(ABSTRACTS_PATH))
+    # Prefer MongoDB for authoritative counts; fall back to file-based count
+    try:
+        total_abstracts = int(abstracts_col.count_documents({}))
+    except Exception:
+        total_abstracts = _count_jsonl(Path(ABSTRACTS_PATH))
 
     total_reviewers = 0
     try:
@@ -87,6 +93,45 @@ def admin_export_snapshot():
     ts = int(time.time())
     out_path = FINAL_EXPORT_PATH.parent / f"final_consensus_snapshot_{ts}.jsonl"
     try:
+        # Stream as attachment if requested, using the same consensus computation as export_consensus
+        from flask import send_file, request
+        from io import BytesIO
+        import json
+        from backend.services.aggregation import get_all_pmids, aggregate_final_decisions_for_pmid
+        download = str(request.args.get("download", "0")).lower() in ("1", "true", "yes")
+        if download:
+            # Build using same consensus computation as export_consensus
+            finals = []
+            try:
+                pmids = list(get_all_pmids())
+            except Exception:
+                pmids = []
+            for pid in pmids:
+                try:
+                    finals.extend(aggregate_final_decisions_for_pmid(pid))
+                except Exception:
+                    continue
+            buf = BytesIO()
+            try:
+                for rec in finals:
+                    buf.write((json.dumps(rec, ensure_ascii=False) + "\n").encode("utf-8"))
+            except Exception:
+                pass
+            buf.seek(0)
+            ts = int(time.time())
+            filename = f"final_consensus_snapshot_{ts}.jsonl"
+            try:
+                log_review_action({
+                    "action": "admin_export_snapshot",
+                    "by": actor,
+                    "path": filename,
+                    "created_at": time.time(),
+                })
+            except Exception:
+                pass
+            return send_file(buf, as_attachment=True, download_name=filename, mimetype="application/json")
+
+        # Fallback: keep legacy file export location for compatibility
         export_passed_assertions(str(out_path))
         try:
             log_review_action({
@@ -98,6 +143,19 @@ def admin_export_snapshot():
         except Exception:
             pass
         return jsonify({"success": True, "path": str(out_path)})
+    except Exception as e:
+        return jsonify({"success": False, "message": str(e)}), 500
+
+
+@admin_api.get("/analytics")
+def admin_analytics():
+    guard = _require_admin_resp()
+    if guard:
+        return guard
+    reviewer = request.args.get("reviewer")
+    try:
+        data = compute_platform_analytics(reviewer_email=reviewer)
+        return jsonify({"success": True, "data": data})
     except Exception as e:
         return jsonify({"success": False, "message": str(e)}), 500
 

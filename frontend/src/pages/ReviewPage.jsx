@@ -41,6 +41,8 @@ function ReviewPageImpl(_, ref) {
   const [statusMsg, setStatusMsg] = useState("");
   const [statusType, setStatusType] = useState(STATUS.LOADING);
   const [submitting, setSubmitting] = useState(false);
+  const [violations, setViolations] = useState([]);
+  const [draftSavedAt, setDraftSavedAt] = useState(null);
 
   // Confirm modals
   const [confirmSubmitOpen, setConfirmSubmitOpen] = useState(false);
@@ -155,13 +157,34 @@ function ReviewPageImpl(_, ref) {
       } catch {}
     })();
     // keep lock alive while on page
-    const iv = setInterval(() => {
-      heartbeat().catch(() => {});
-    }, 25000);
+    let iv = null;
+    const startBeat = () => {
+      if (iv) return;
+      iv = setInterval(() => {
+        heartbeat().catch(() => {});
+      }, 25000);
+    };
+    const stopBeat = () => {
+      if (iv) {
+        clearInterval(iv);
+        iv = null;
+      }
+    };
+    startBeat();
+    const onVis = () => {
+      if (document.hidden) stopBeat(); else startBeat();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       isMountedRef.current = false;
       reqIdRef.current += 1; // 使未完成请求失效
-      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVis);
+      stopBeat();
+      // best-effort explicit release on unload
+      try {
+        const url = (import.meta.env.VITE_API_BASE || "") + "/api/abandon";
+        navigator.sendBeacon?.(url, new Blob(["{}"], { type: "application/json" }));
+      } catch {}
     };
   }, [loadAbstract]);
 
@@ -178,6 +201,39 @@ function ReviewPageImpl(_, ref) {
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
   }, [hasUnsavedChanges, submitting]);
+
+  // Draft save/restore (1h TTL)
+  useEffect(() => {
+    if (!abstract?.pmid) return;
+    const key = `draft:${abstract.pmid}`;
+    // restore
+    try {
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const { ts, sentence_results, review_states } = JSON.parse(raw);
+        if (Date.now() - ts < 60 * 60 * 1000) {
+          if (Array.isArray(sentence_results)) setAbstract((prev) => prev ? { ...prev, sentence_results } : prev);
+          if (review_states && typeof review_states === "object") setReviewStatesMap(review_states);
+          setDraftSavedAt(new Date(ts));
+        } else {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch {}
+    // auto-save
+    const iv = setInterval(() => {
+      try {
+        const snapshot = {
+          ts: Date.now(),
+          sentence_results: abstract?.sentence_results || [],
+          review_states: reviewStatesMap,
+        };
+        localStorage.setItem(key, JSON.stringify(snapshot));
+        setDraftSavedAt(new Date(snapshot.ts));
+      } catch {}
+    }, 15000);
+    return () => clearInterval(iv);
+  }, [abstract?.pmid, abstract?.sentence_results, reviewStatesMap]);
 
   /* ------------------------------- Mutators ------------------------------- */
 
@@ -315,6 +371,7 @@ function ReviewPageImpl(_, ref) {
     setSubmitting(true);
     setStatusType(STATUS.SUBMITTING);
     setStatusMsg("Submitting review…");
+    setViolations([]);
 
     try {
       const payload = {
@@ -341,11 +398,14 @@ function ReviewPageImpl(_, ref) {
       // eslint-disable-next-line no-console
       console.error("Submit error:", err);
       setStatusType(STATUS.ERROR);
-      const msg =
-        typeof err === "string"
-          ? err
-          : err?.message || "Failed to submit review. Please retry.";
-      setStatusMsg(`❌ ${msg}`);
+      const backendViolations = err?.response?.data?.data?.violations || err?.payload?.data?.violations || [];
+      if (Array.isArray(backendViolations) && backendViolations.length) {
+        setViolations(backendViolations);
+        setStatusMsg("❌ Validation errors. Please fix and resubmit.");
+      } else {
+        const msg = typeof err === "string" ? err : err?.message || "Failed to submit review. Please retry.";
+        setStatusMsg(`❌ ${msg}`);
+      }
       setSubmitting(false);
     }
   }, [abstract, overallDecision, reviewStatesMap, submitting, loadAbstract]);
@@ -474,6 +534,17 @@ function ReviewPageImpl(_, ref) {
             <div className="text-sm text-gray-600 flex-1" aria-live="polite">
               {statusMsg}
             </div>
+            {!!violations.length && (
+              <div className="w-full mt-2 text-sm text-red-600">
+                <div className="font-semibold mb-1">Validation issues:</div>
+                <ul className="list-disc pl-5 space-y-1">
+                  {violations.slice(0, 8).map((v, i) => (
+                    <li key={i}>{v.message || `${v.code}`}</li>
+                  ))}
+                  {violations.length > 8 && <li>…and {violations.length - 8} more</li>}
+                </ul>
+              </div>
+            )}
             <div className="flex gap-4 items-center flex-wrap">
               <div className="hidden md:flex flex-col text-right">
                 <div className="text-[10px] text-gray-500">Overall decision</div>

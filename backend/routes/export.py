@@ -1,9 +1,12 @@
 # backend/routes/export.py
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, current_app, session
+from flask import Blueprint, jsonify, current_app, session, request, send_file
+from io import BytesIO
+import time
+import json
 
-from ..services.aggregation import export_final_consensus  # 见下方说明
+from ..services.aggregation import export_final_consensus, get_all_pmids, aggregate_final_decisions_for_pmid  # 见下方说明
 from ..services.export_service import export_passed_assertions
 
 export_api = Blueprint("export_api", __name__, url_prefix="/api")
@@ -13,6 +16,23 @@ def api_export_consensus():
     if not session.get("is_admin"):
         return jsonify({"success": False, "error": "not_authorized"}), 403
     try:
+        download = str(request.args.get("download", "0")).lower() in ("1", "true", "yes")
+        if download:
+            # Build content in-memory and return as attachment
+            finals = []
+            for pid in get_all_pmids():
+                finals.extend(aggregate_final_decisions_for_pmid(pid))
+            buf = BytesIO()
+            for rec in finals:
+                buf.write((json.dumps(rec, ensure_ascii=False) + "\n").encode("utf-8"))
+            buf.seek(0)
+            ts = int(time.time())
+            prefix = request.args.get("prefix", "final_consensus") or "final_consensus"
+            # very light sanitization
+            prefix = "".join(c for c in prefix if c.isalnum() or c in ("_", "-")) or "final_consensus"
+            filename = f"{prefix}_{ts}.jsonl"
+            return send_file(buf, as_attachment=True, download_name=filename, mimetype="application/json")
+
         count, out_path = export_final_consensus()
         return jsonify({"success": True, "exported_count": count, "path": str(out_path)})
     except Exception as e:
@@ -26,6 +46,32 @@ def api_export_passed():
     if not session.get("is_admin"):
         return jsonify({"success": False, "error": "not_authorized"}), 403
     try:
+        download = str(request.args.get("download", "0")).lower() in ("1", "true", "yes")
+        if download:
+            # Build content from Mongo directly, in-memory
+            from ..models.db import abstracts_col
+            buf = BytesIO()
+            total = 0
+            for abs_doc in abstracts_col.find({}):
+                pmid = abs_doc.get("pmid")
+                for s in abs_doc.get("sentences", []) or []:
+                    sent_idx = s.get("sentence_index")
+                    sent_text = s.get("sentence")
+                    for a in s.get("assertions", []) or []:
+                        if a.get("final_status") == "consensus" and a.get("final_decision") in ("accept", "add"):
+                            out = {
+                                "pmid": pmid,
+                                "sentence_index": sent_idx,
+                                "sentence": sent_text,
+                                "assertion": a,
+                            }
+                            buf.write((json.dumps(out, ensure_ascii=False) + "\n").encode("utf-8"))
+                            total += 1
+            buf.seek(0)
+            ts = int(time.time())
+            filename = f"passed_assertions_{ts}.jsonl"
+            return send_file(buf, as_attachment=True, download_name=filename, mimetype="application/json")
+
         path, total, sha1 = export_passed_assertions("data/exports")
         return jsonify({
             "success": True,

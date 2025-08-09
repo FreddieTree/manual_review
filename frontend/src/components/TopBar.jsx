@@ -37,7 +37,12 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
                     const list = listRaw.map((r) => ({ name: (r.name || r.email || "").trim(), email: (r.email || "").toLowerCase() }));
                     if (cancelled) return;
                     setReviewersList(list);
-                    if (list.length) setSelectedReviewer(list[0]);
+                    if (list.length) {
+                        setSelectedReviewer(list[0]);
+                        try {
+                            window.dispatchEvent(new CustomEvent("admin:reviewerSelected", { detail: list[0] }));
+                        } catch {}
+                    }
                 })
                 .catch((e) => {
                     if (cancelled) return;
@@ -88,7 +93,8 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
             <section
                 ref={ref}
                 className={clsx(
-                    "relative isolate mx-auto my-4 rounded-3xl overflow-hidden",
+                    // Remove overflow-hidden so dropdowns/portals can escape the container
+                    "relative isolate mx-auto my-4 rounded-3xl",
                     "bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800",
                     "shadow-xl",
                     "backdrop-blur-sm",
@@ -157,7 +163,16 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
                         <div className="flex items-center gap-2">
                             <div className="text-[11px] text-gray-500 dark:text-gray-400 mr-1 font-medium">Reviewer:</div>
                             <div className="relative min-w-[140px]">
-                                <Listbox value={selectedReviewer} onChange={setSelectedReviewer} by="email">
+                                <Listbox
+                                    value={selectedReviewer}
+                                    onChange={(val) => {
+                                        setSelectedReviewer(val);
+                                        try {
+                                            window.dispatchEvent(new CustomEvent("admin:reviewerSelected", { detail: val }));
+                                        } catch {}
+                                    }}
+                                    by="email"
+                                >
                                     <div className="relative">
                                         <Listbox.Button
                                             className="flex items-center gap-1 px-3 py-2 bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl shadow-sm text-sm font-medium text-gray-900 dark:text-gray-100 w-full"
@@ -168,7 +183,7 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
                                             </span>
                                             <ChevronDownIcon className="w-4 h-4 flex-shrink-0 text-gray-500" />
                                         </Listbox.Button>
-                                        <Listbox.Options className="absolute z-10 mt-1 max-h-60 w-full overflow-auto rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-lg py-1 text-sm">
+                                        <Listbox.Options className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-lg py-1 text-sm">
                                             <Listbox.Option
                                                 key="__all__"
                                                 value={null}

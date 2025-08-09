@@ -101,6 +101,10 @@ body {
   padding: 0;
 }
 
+/* Route-scoped scroll lock helper */
+html.no-scroll, body.no-scroll { overflow: hidden !important; height: 100%; overscroll-behavior: none; }
+body.no-scroll::-webkit-scrollbar { display: none; }
+
 h1, h2, h3, h4 {
   font-weight: 700;
   line-height: 1.2;

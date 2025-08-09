@@ -7,3 +7,5 @@ flask-session
 flask-wtf
 email-validator
 gunicorn
+pymongo[srv]>=4.6
+pydantic>=2,<3

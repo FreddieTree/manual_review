@@ -8,7 +8,8 @@ import React, {
 } from "react";
 import PropTypes from "prop-types";
 import clsx from "clsx";
-import { getAdminStats, exportConsensus, uploadAbstracts, getImportProgress } from "../api/admin"; // 明确路径
+import { getAdminStats, exportConsensus, uploadAbstracts, getImportProgress, exportSnapshot, getAnalytics } from "../api/admin"; // 明确路径
+import ConfirmModal from "../components/ConfirmModal";
 import TopBar from "../components/TopBar";
 import Card from "../components/ui/Card";
 import Section from "../components/ui/Section";
@@ -102,11 +103,49 @@ function AdminPageImpl(_, ref) {
   });
 
   const [exporting, setExporting] = React.useState(false);
-  const [exportMsg, setExportMsg] = React.useState("");
+  const [exportOpen, setExportOpen] = React.useState(false);
+  const [snapshotOpen, setSnapshotOpen] = React.useState(false);
+  const [snapshotBusy, setSnapshotBusy] = React.useState(false);
+  const [snapshotMsg, setSnapshotMsg] = React.useState("");
   const [uploadMsg, setUploadMsg] = React.useState("");
   const [uploading, setUploading] = React.useState(false);
   const [jobStatus, setJobStatus] = React.useState(null);
   const jobRef = useRef(null);
+
+  // Reviewer scope from TopBar dropdown (via global event)
+  const [selectedReviewer, setSelectedReviewer] = React.useState(null);
+  useEffect(() => {
+    // Lock page scroll
+    document.documentElement.classList.add("no-scroll");
+    document.body.classList.add("no-scroll");
+    const handler = (e) => setSelectedReviewer(e.detail || null);
+    window.addEventListener("admin:reviewerSelected", handler);
+    return () => {
+      window.removeEventListener("admin:reviewerSelected", handler);
+      document.documentElement.classList.remove("no-scroll");
+      document.body.classList.remove("no-scroll");
+    };
+  }, []);
+
+  // Analytics (platform or reviewer-scoped)
+  const [analytics, setAnalytics] = React.useState(null);
+  const [analyticsLoading, setAnalyticsLoading] = React.useState(true);
+  const [analyticsError, setAnalyticsError] = React.useState("");
+  const loadAnalytics = useCallback(async () => {
+    setAnalyticsLoading(true);
+    setAnalyticsError("");
+    try {
+      const params = selectedReviewer ? { reviewer: selectedReviewer?.email || selectedReviewer } : {};
+      const data = await getAnalytics(params, {});
+      setAnalytics(data || {});
+    } catch (e) {
+      setAnalyticsError(e?.message || "Failed to load analytics");
+      setAnalytics(null);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [selectedReviewer]);
+  useEffect(() => { loadAnalytics(); }, [loadAnalytics]);
 
   const reviewedRatio =
     typeof stats?.reviewed_ratio === "number"
@@ -124,7 +163,7 @@ function AdminPageImpl(_, ref) {
       ref={ref}
       data-testid="AdminPage"
       className={clsx(
-        "min-h-screen",
+        "h-screen overflow-hidden",
         "bg-gradient-to-b from-slate-50 via-white to-slate-100",
         "dark:from-slate-900 dark:via-slate-950 dark:to-slate-900"
       )}
@@ -132,7 +171,7 @@ function AdminPageImpl(_, ref) {
       {/* Unified TopBar for admin */}
       <TopBar isAdminView />
 
-      <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         {/* Header / actions */}
         <div className="flex flex-col md:flex-row items-start justify-between gap-4">
           <div className="flex-1">
@@ -168,21 +207,7 @@ function AdminPageImpl(_, ref) {
               </div>
             )}
             <button
-              onClick={async () => {
-                setExporting(true);
-                setExportMsg("");
-                try {
-                  const body = await exportConsensus({});
-                  const ok = body && body.success !== false;
-                  const path = body?.path || body?.data?.path;
-                  const count = body?.exported_count || body?.data?.exported_count;
-                  setExportMsg(ok ? `Exported${count ? ` ${count}` : ""}${path ? ` → ${path}` : ""}` : (body?.message || "Export failed"));
-                } catch (e) {
-                  setExportMsg(e?.message || "Export failed");
-                } finally {
-                  setExporting(false);
-                }
-              }}
+              onClick={() => setExportOpen(true)}
               disabled={exporting}
               className={clsx(
                 "inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition",
@@ -192,9 +217,20 @@ function AdminPageImpl(_, ref) {
             >
               {exporting ? "Exporting…" : "Export Consensus"}
             </button>
-            {exportMsg && (
-              <div className="text-xs text-gray-600">{exportMsg}</div>
-            )}
+              <button
+                onClick={() => { setSnapshotOpen(true); setSnapshotMsg(""); }}
+                disabled={snapshotBusy}
+                className={clsx(
+                  "inline-flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition",
+                  "bg-slate-700 hover:bg-slate-800 text-white",
+                  snapshotBusy && "opacity-60 cursor-not-allowed"
+                )}
+              >
+                {snapshotBusy ? "Snapshot…" : "Export Snapshot"}
+              </button>
+              {snapshotMsg && (
+                <div className="text-xs text-gray-600">{snapshotMsg}</div>
+              )}
           </div>
         </div>
 
@@ -215,78 +251,7 @@ function AdminPageImpl(_, ref) {
           </Card>
         )}
 
-        {/* Stats overview */}
-        <Card>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            <StatCard
-              label="Total Abstracts"
-              value={totalAbstracts}
-              loading={loading}
-              extra={
-                !loading && stats?.abstracts_today
-                  ? `+${stats.abstracts_today} today`
-                  : null
-              }
-              Icon={() => <span>📄</span>}
-            />
-            <StatCard
-              label="Total Reviewers"
-              value={totalReviewers}
-              loading={loading}
-              extra={
-                !loading && stats?.new_reviewers
-                  ? `+${stats.new_reviewers} joined`
-                  : null
-              }
-              Icon={() => <span>👩‍🔬</span>}
-            />
-            <StatCard
-              label="Conflicts"
-              value={stats?.conflicts ?? 0}
-              loading={loading}
-              extra={
-                !loading && hasConflicts ? (
-                  <a
-                    href="/admin/arbitration"
-                    className="text-sm underline text-red-600"
-                  >
-                    Resolve now
-                  </a>
-                ) : (
-                  !loading && <span className="text-sm text-gray-500">None</span>
-                )
-              }
-              Icon={() => <span>⚡</span>}
-            />
-            <div className="flex flex-col gap-2">
-              <div className="text-xs font-medium uppercase tracking-wide text-gray-500">
-                Fully Reviewed
-              </div>
-              <div className="mt-1 flex items-baseline gap-2">
-                <div className="text-2xl font-extrabold tabular-nums text-slate-900 dark:text-white">
-                  {loading ? (
-                    <span className="inline-block h-8 w-20 rounded bg-gray-200 dark:bg-slate-700 animate-pulse" />
-                  ) : reviewedCount != null ? (
-                    reviewedCount
-                  ) : (
-                    <span className="text-gray-400">—</span>
-                  )}
-                </div>
-                {!loading && reviewedRatio != null && (
-                  <div className="flex-1">
-                    <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-indigo-500"
-                        style={{ width: `${reviewedRatio}%` }}
-                        aria-label={`Reviewed ${reviewedRatio}%`}
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </Card>
+        {/* Merged analytics + key stats */}
 
         {/* Summary + Quick Actions */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -295,30 +260,93 @@ function AdminPageImpl(_, ref) {
               <div className="text-2xl">📊</div>
               <div className="flex-1">
                 <h2 className="text-xl font-bold text-slate-900 dark:text-white">
-                  Platform Overview
+                  {selectedReviewer ? `Reviewer Analytics — ${selectedReviewer.name}` : "Platform Analytics"}
                 </h2>
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-                  Live metrics and actionable insights at a glance.
+                  {selectedReviewer ? "Detailed stats for the selected reviewer." : "Live metrics and actionable insights at a glance."}
                 </p>
               </div>
             </div>
-            <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-gray-700 dark:text-gray-300">
-              <li>
-                <span className="font-semibold">{activeReviewers}</span> active
-                reviewers
-              </li>
-              <li>
-                Arbitration queue:{" "}
-                <span className="font-semibold">{arbitrationCount}</span>
-              </li>
-              <li>
-                Latest export:{" "}
-                <span className="font-semibold">
-                  {stats?.last_export || "—"}
-                </span>
-              </li>
-              <li>Leaderboard, activity feed, audit logs coming soon.</li>
-            </ul>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-gray-700 dark:text-gray-300">
+              {/* Compact key metrics row */}
+              <Card className="p-4">
+                <div className="text-xs font-medium uppercase text-gray-500 mb-1">Total Abstracts</div>
+                <div className="text-2xl font-extrabold">{totalAbstracts ?? "—"}</div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-xs font-medium uppercase text-gray-500 mb-1">Total Reviewers</div>
+                <div className="text-2xl font-extrabold">{totalReviewers ?? "—"}</div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-xs font-medium uppercase text-gray-500 mb-1">Conflicts</div>
+                <div className="text-2xl font-extrabold">{stats?.conflicts ?? 0}</div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-xs font-medium uppercase text-gray-500 mb-1">Fully Reviewed</div>
+                <div className="flex items-center gap-3">
+                  <div className="text-2xl font-extrabold">{reviewedCount ?? 0}</div>
+                  <div className="flex-1">
+                    <div className="w-full bg-gray-200 dark:bg-gray-700 h-2 rounded-full overflow-hidden">
+                      <div className="h-full bg-indigo-500" style={{ width: `${reviewedRatio || 0}%` }} />
+                    </div>
+                  </div>
+                </div>
+              </Card>
+              <Card className="p-4">
+                <div className="text-sm font-semibold mb-2">Totals</div>
+                {analyticsLoading ? (
+                  <div className="h-16 bg-gray-100 rounded animate-pulse" />
+                ) : analytics ? (
+                  <ul className="text-sm space-y-1">
+                    <li>Abstracts: <span className="font-semibold">{analytics?.totals?.abstracts ?? "—"}</span></li>
+                    <li>Sentences: <span className="font-semibold">{analytics?.totals?.sentences ?? "—"}</span></li>
+                    <li>Assertions: <span className="font-semibold">{analytics?.totals?.assertions ?? "—"}</span></li>
+                  </ul>
+                ) : (
+                  <div className="text-sm text-red-600">{analyticsError || "Failed to load"}</div>
+                )}
+              </Card>
+              <Card className="p-4">
+                <div className="text-sm font-semibold mb-2">Assertion Status</div>
+                {analyticsLoading ? (
+                  <div className="h-16 bg-gray-100 rounded animate-pulse" />
+                ) : (
+                  <ul className="text-sm grid grid-cols-2 gap-1">
+                    {Object.entries(analytics?.status_counts || {}).map(([k, v]) => (
+                      <li key={k} className="flex justify-between"><span className="capitalize">{k}</span><span className="font-semibold">{v}</span></li>
+                    ))}
+                  </ul>
+                )}
+              </Card>
+              <Card className="p-4 sm:col-span-2">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm font-semibold">Activity</div>
+                  <button className="text-xs underline" onClick={loadAnalytics}>Refresh</button>
+                </div>
+                {analyticsLoading ? (
+                  <div className="h-20 bg-gray-100 rounded animate-pulse" />
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
+                    <div>
+                      <div className="text-xs text-gray-500">Abstracts touched</div>
+                      <div className="font-semibold">{analytics?.activity?.abstracts_touched ?? 0}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Sentences touched</div>
+                      <div className="font-semibold">{analytics?.activity?.sentences_touched ?? 0}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Actions</div>
+                      <div className="font-mono text-xs break-words">{JSON.stringify(analytics?.activity?.actions || {})}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-gray-500">Last activity</div>
+                      <div className="font-semibold">{analytics?.activity?.last_activity ? new Date(analytics.activity.last_activity * 1000).toLocaleString() : "—"}</div>
+                    </div>
+                  </div>
+                )}
+              </Card>
+            </div>
             <div className="text-xs text-gray-500 dark:text-gray-400">
               Last updated:{" "}
               <span className="font-semibold">
@@ -414,6 +442,47 @@ function AdminPageImpl(_, ref) {
           </Card>
         </div>
       </div>
+      {/* Confirm: export consensus */}
+      <ConfirmModal
+        open={exportOpen}
+        title="Export final consensus"
+        description="This will generate a JSONL of final consensus decisions and download it to your computer. Proceed?"
+        confirmText="Export"
+        intent="primary"
+        isLoading={exporting}
+        onCancel={() => setExportOpen(false)}
+        onConfirm={async () => {
+          setExporting(true);
+          try {
+            await exportConsensus();
+          } finally {
+            setExporting(false);
+            setExportOpen(false);
+          }
+        }}
+      />
+
+      {/* Confirm: export snapshot */}
+      <ConfirmModal
+        open={snapshotOpen}
+        title="Confirm snapshot export"
+        description="This will export a timestamped snapshot of final consensus for traceability. Proceed?"
+        confirmText="Export"
+        intent="primary"
+        isLoading={snapshotBusy}
+        onCancel={() => setSnapshotOpen(false)}
+        onConfirm={async () => {
+          setSnapshotBusy(true);
+          try {
+            await exportSnapshot();
+          } catch (e) {
+            // no-op; rely on download or network error tooltip
+          } finally {
+            setSnapshotBusy(false);
+            setSnapshotOpen(false);
+          }
+        }}
+      />
     </div>
   );
 }

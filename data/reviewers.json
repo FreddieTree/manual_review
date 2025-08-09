@@ -5,5 +5,12 @@
     "active": true,
     "role": "reviewer",
     "note": ""
+  },
+  {
+    "email": "qwe@bristol.ac.uk",
+    "name": "qwe",
+    "active": true,
+    "role": "reviewer",
+    "note": ""
   }
 ]

@@ -49,7 +49,12 @@ function handleAuthRequired(originalConfig) {
   if (evt.defaultPrevented) return;
 
   const loginUrl = LOGIN_PATH || "/";
-  const qs = `?next=${encodeURIComponent(here)}`;
+  // Avoid infinite ?next nesting: if we're already on the login path, don't redirect again
+  const atLogin = window.location.pathname.replace(/\/+$/, "") === loginUrl.replace(/\/+$/, "");
+  if (atLogin) return;
+  // If current URL already contains a next param, don't re-wrap it
+  const hasNext = /[?&]next=/.test(window.location.search);
+  const qs = hasNext ? window.location.search : `?next=${encodeURIComponent(here)}`;
   window.location.href = `${loginUrl}${qs}`;
 }
 

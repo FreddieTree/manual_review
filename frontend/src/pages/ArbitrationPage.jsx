@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, forwardRef, memo } fro
 import { client } from "../api/client";
 import Card from "../components/ui/Card";
 import Section from "../components/ui/Section";
+import ConfirmModal from "../components/ConfirmModal";
 
 function ArbitrationPageImpl(_, ref) {
     const [queue, setQueue] = useState([]);
@@ -26,7 +27,21 @@ function ArbitrationPageImpl(_, ref) {
                 { unwrap: "data" }
             );
             const items = Array.isArray(data?.items) ? data.items : [];
-            setQueue(items);
+            const mapped = items.map((it) => {
+                const logs = Array.isArray(it.logs) ? it.logs : [];
+                const last = logs[logs.length - 1] || {};
+                return {
+                    ...it,
+                    _last: last,
+                    subject: last.subject,
+                    object: last.object,
+                    predicate: last.predicate,
+                    negation: !!last.negation,
+                    creator: last.creator || last.reviewer || "",
+                    conflict_type: it.conflict_reason || it.status,
+                };
+            });
+            setQueue(mapped);
         } catch (err) {
             setQueue([]);
             setError(err?.message || "Failed to load arbitration queue.");
@@ -40,24 +55,18 @@ function ArbitrationPageImpl(_, ref) {
         return () => controllerRef.current?.abort();
     }, [loadQueue]);
 
-    const handleDecision = async (item, decision) => {
-        let comment = "";
-        if (decision !== "accept") {
-            // 简单交互；可替换为自定义对话框
-            // eslint-disable-next-line no-alert
-            comment = window.prompt(`Leave comment for this ${decision}:`, "") ?? "";
-            if (comment === "" && decision !== "reject") {
-                // 允许空但给提示
-            }
-        }
+    const [pendingAction, setPendingAction] = useState(null);
+    const [pendingDecision, setPendingDecision] = useState(null);
 
+    const postDecision = async (item, decision, commentText = "") => {
+        if (!item || !decision) return;
         setActioning(item.assertion_key || item.assertion_id);
         try {
             await client.post("arbitration/decide", {
                 pmid: item.pmid,
                 assertion_key: item.assertion_key || item.assertion_id,
                 decision,
-                comment,
+                comment: commentText,
             });
             await loadQueue();
         } catch (err) {
@@ -66,6 +75,23 @@ function ArbitrationPageImpl(_, ref) {
         } finally {
             setActioning(null);
         }
+    };
+
+    const confirmAction = async (commentText = "") => {
+        const item = pendingAction;
+        const decision = pendingDecision;
+        setPendingAction(null);
+        setPendingDecision(null);
+        await postDecision(item, decision, commentText);
+    };
+
+    const handleDecision = (item, decision) => {
+        if (decision === "accept") {
+            postDecision(item, decision, "");
+            return;
+        }
+        setPendingAction(item);
+        setPendingDecision(decision);
     };
 
     return (
@@ -107,12 +133,12 @@ function ArbitrationPageImpl(_, ref) {
                                                     <td className="px-3 py-2">{item.creator}</td>
                                                     <td className="px-3 py-2">{item.conflict_type || "Unspecified"}</td>
                                                     <td className="px-3 py-2">
-                                                        <div className="flex gap-2">
+                                        <div className="flex gap-2">
                                                             <button
                                                                 type="button"
                                                                 className="bg-green-600 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-green-700 transition disabled:opacity-60"
                                                                 disabled={busy}
-                                                                onClick={() => handleDecision(item, "accept")}
+                                                onClick={() => handleDecision(item, "accept")}
                                                             >
                                                                 Accept
                                                             </button>
@@ -120,7 +146,7 @@ function ArbitrationPageImpl(_, ref) {
                                                                 type="button"
                                                                 className="bg-yellow-600 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-yellow-700 transition disabled:opacity-60"
                                                                 disabled={busy}
-                                                                onClick={() => handleDecision(item, "modify")}
+                                                onClick={() => handleDecision(item, "modify")}
                                                             >
                                                                 Modify
                                                             </button>
@@ -128,7 +154,7 @@ function ArbitrationPageImpl(_, ref) {
                                                                 type="button"
                                                                 className="bg-red-600 text-white px-3 py-1 rounded text-xs font-semibold hover:bg-red-700 transition disabled:opacity-60"
                                                                 disabled={busy}
-                                                                onClick={() => handleDecision(item, "reject")}
+                                                onClick={() => handleDecision(item, "reject")}
                                                             >
                                                                 Reject
                                                             </button>
@@ -154,6 +180,46 @@ function ArbitrationPageImpl(_, ref) {
                         )}
                     </Section>
                 </Card>
+                {pendingAction && (
+                    <div className="mt-4">
+                        <Card>
+                            <Section title={`Confirm ${pendingDecision}`} description="Provide a reason (required).">
+                                <div className="flex flex-col gap-2">
+                                    <label htmlFor="arb-comment-input" className="text-sm text-gray-700">Reason</label>
+                                    <textarea id="arb-comment-input" className="w-full min-h-[80px] rounded-md border border-gray-300 p-2" placeholder="Reason for decision" />
+                                    <div className="flex gap-2 justify-end">
+                                        <button className="px-4 py-2 rounded bg-gray-200" onClick={() => { setPendingAction(null); setPendingDecision(null); }}>Cancel</button>
+                                        <button className="px-4 py-2 rounded bg-indigo-600 text-white" onClick={() => {
+                                            const el = document.getElementById("arb-comment-input");
+                                            const val = (el && el.value) || "";
+                                            if (!val.trim()) return;
+                                            confirmAction(val);
+                                        }}>Confirm</button>
+                                    </div>
+                                </div>
+                            </Section>
+                        </Card>
+                    </div>
+                )}
+                <ConfirmModal
+                    open={!!pendingAction}
+                    title={`Confirm ${pendingDecision || ""}`}
+                    description="Please add a brief reason (required for modify/reject)."
+                    confirmText="Confirm"
+                    cancelText="Cancel"
+                    intent={pendingDecision === "reject" ? "danger" : "primary"}
+                    onCancel={() => { setPendingAction(null); setPendingDecision(null); }}
+                    onConfirm={() => {
+                        const el = document.getElementById("arb-comment-input");
+                        const val = (el && el.value) || "";
+                        if ((pendingDecision === "reject" || pendingDecision === "uncertain" || pendingDecision === "modify") && !val.trim()) {
+                            return; // require reason
+                        }
+                        confirmAction(val);
+                    }}
+                    className=""
+                >
+                </ConfirmModal>
             </div>
         </div>
     );

@@ -1,4 +1,5 @@
-import { get } from "./client";
+import { get, post } from "./client";
+import { BASE_URL } from "./client";
 
 /**
  * 将后端返回的不同字段风格（snake/camel）标准化为统一键名。
@@ -65,12 +66,65 @@ export async function getAdminStats({ signal } = {}) {
     throw new Error("Unable to load admin stats from any endpoint.");
 }
 
-// Admin actions
-export const exportConsensus = ({ signal } = {}) =>
-  get("export_consensus", { signal }, { unwrap: "full" });
+// Analytics (global or reviewer-scoped)
+export const getAnalytics = (params = {}, { signal } = {}) => {
+  const qs = new URLSearchParams(params).toString();
+  return get(`admin/analytics${qs ? `?${qs}` : ""}`, { signal }, { unwrap: "data" });
+};
 
-export const exportPassed = ({ signal } = {}) =>
-  get("export_passed", { signal }, { unwrap: "full" });
+// Admin actions
+// Open a GET download in the browser (saves to Downloads). Returns true if initiated.
+export function exportConsensus() {
+  try {
+    const url = `${BASE_URL.replace(/\/+$/, "")}/export_consensus?download=1`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return Promise.resolve(true);
+  } catch (e) {
+    return Promise.reject(e);
+  }
+}
+
+export function exportPassed() {
+  try {
+    const url = `${BASE_URL.replace(/\/+$/, "")}/export_passed?download=1`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return Promise.resolve(true);
+  } catch (e) {
+    return Promise.reject(e);
+  }
+}
+
+// POST download with a temporary form to include body and cookies
+export function exportSnapshot() {
+  try {
+    const url = `${BASE_URL.replace(/\/+$/, "")}/admin/export_snapshot?download=1`;
+    const form = document.createElement("form");
+    form.action = url;
+    form.method = "POST";
+    form.style.display = "none";
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "confirm";
+    input.value = "true";
+    form.appendChild(input);
+    document.body.appendChild(form);
+    form.submit();
+    setTimeout(() => document.body.removeChild(form), 2000);
+    return Promise.resolve(true);
+  } catch (e) {
+    return Promise.reject(e);
+  }
+}
 
 export const uploadAbstracts = (payload, { signal } = {}) => {
   // Supports multipart file upload or JSON { path, confirm }

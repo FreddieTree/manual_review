@@ -157,6 +157,7 @@ function AssertionEditorImpl(
             <div className="flex flex-col gap-5">
                 {hasAssertions ? (
                     assertions.map((a, i) => {
+                        const canEdit = !!a.is_new; // Only allow edit/delete for own new (unsubmitted) assertions
                         const subjectMatch = isPerfectMatch(sentence, a.subject);
                         const objectMatch = isPerfectMatch(sentence, a.object);
                         const predicateValid = Array.isArray(predicateWhitelist) ? predicateWhitelist.includes(a.predicate) : true;
@@ -272,7 +273,7 @@ function AssertionEditorImpl(
                                                 size="sm"
                                             >
                                                 <option value="accept">Accept</option>
-                                                <option value="modify">Modify</option>
+                                                {canEdit && <option value="modify">Modify</option>}
                                                 <option value="reject">Reject</option>
                                                 <option value="uncertain">Uncertain</option>
                                             </Select>
@@ -288,25 +289,30 @@ function AssertionEditorImpl(
                                                 onChange={(e) => handleCommentChange(i, e.target.value)}
                                                 size="sm"
                                             />
+                                            {review.decision === "uncertain" && !review.comment?.trim() && (
+                                                <div className="text-[11px] text-red-600 mt-1">Reason required for 'uncertain'.</div>
+                                            )}
                                         </div>
-                                        <div className="flex gap-2 mt-1 flex-wrap">
-                                            <Button
-                                                size="sm"
-                                                variant="secondary"
-                                                onClick={() => {
-                                                    markModified(i);
-                                                    onModifyAssertion?.(sentenceIndex, i, {
-                                                        ...assertions[i],
-                                                        edited_at: new Date().toISOString(),
-                                                    });
-                                                }}
-                                            >
-                                                Edit
-                                            </Button>
-                                            <Button size="sm" variant="destructive" onClick={() => requestDelete(i)}>
-                                                Delete
-                                            </Button>
-                                        </div>
+                                        {canEdit && (
+                                            <div className="flex gap-2 mt-1 flex-wrap">
+                                                <Button
+                                                    size="sm"
+                                                    variant="secondary"
+                                                    onClick={() => {
+                                                        markModified(i);
+                                                        onModifyAssertion?.(sentenceIndex, i, {
+                                                            ...assertions[i],
+                                                            edited_at: new Date().toISOString(),
+                                                        });
+                                                    }}
+                                                >
+                                                    Edit
+                                                </Button>
+                                                <Button size="sm" variant="destructive" onClick={() => requestDelete(i)}>
+                                                    Delete
+                                                </Button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             </div>

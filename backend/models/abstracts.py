@@ -8,6 +8,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
 from ..config import ABSTRACTS_PATH
+try:
+    # MongoDB collection for abstracts (optional at runtime)
+    from ..models.db import abstracts_col  # type: ignore
+except Exception:  # pragma: no cover
+    abstracts_col = None  # type: ignore
 
 # Thread-safe cache keyed by file mtime
 _state = {
@@ -32,12 +37,35 @@ def _abs_path() -> Path:
 # ---------------------------------------------------------------------------
 
 def _normalize_abstract(a: Dict[str, Any]) -> Dict[str, Any]:
-    """Ensure minimal structural integrity for an abstract object."""
+    """Ensure minimal structural integrity for an abstract object.
+
+    This normalizes two possible storage layouts:
+    - File-based JSONL uses key: "sentence_results"
+    - MongoDB-based docs (import_service) use key: "sentences"
+    We convert everything into the file-compatible shape with "sentence_results".
+    """
+    # If Mongo-style, convert to file-style
+    if isinstance(a.get("sentences"), list):
+        sentences = a.get("sentences") or []
+        sentence_results: List[Dict[str, Any]] = []
+        for idx, s in enumerate(sentences, 1):
+            sr = {
+                "sentence_index": s.get("sentence_index", idx),
+                "sentence": s.get("sentence", ""),
+                "assertions": s.get("assertions", []) if isinstance(s.get("assertions"), list) else [],
+            }
+            sentence_results.append({**s, **sr})
+        a["sentence_results"] = sentence_results
+
     if "sentence_results" not in a or not isinstance(a["sentence_results"], list):
         a["sentence_results"] = []
     for s in a["sentence_results"]:
         if "assertions" not in s or not isinstance(s["assertions"], list):
             s["assertions"] = []
+
+    # Maintain sentence_count coherently
+    if not isinstance(a.get("sentence_count"), int):
+        a["sentence_count"] = len(a["sentence_results"]) if isinstance(a["sentence_results"], list) else 0
     return a
 
 def _load_jsonl(path: Path) -> List[Dict[str, Any]]:
@@ -63,7 +91,26 @@ def _load_jsonl(path: Path) -> List[Dict[str, Any]]:
     return items
 
 def _rebuild_cache(path: Path) -> None:
-    data = _load_jsonl(path)
+    # Prefer MongoDB as the authoritative source when available
+    data: List[Dict[str, Any]] = []
+    used_mongo = False
+    if abstracts_col is not None:
+        try:
+            # Pull all documents; projection can be added if needed
+            docs = list(abstracts_col.find({}))
+            for d in docs:
+                # Ensure pmid is string
+                if d.get("pmid") is not None:
+                    d["pmid"] = str(d["pmid"])
+                data.append(_normalize_abstract(d))
+            used_mongo = True
+        except Exception:
+            used_mongo = False
+
+    # Fallback to JSONL file if Mongo unavailable or empty
+    if not used_mongo or not data:
+        data = _load_jsonl(path)
+
     index: Dict[str, Dict[str, Any]] = {}
     for a in data:
         pmid = str(a.get("pmid"))
@@ -94,8 +141,21 @@ def invalidate_cache() -> None:
         _state["data"] = None
 
 def get_abstract_by_id(abs_id: Union[str, int]) -> Optional[Dict[str, Any]]:
-    """Get abstract by PMID; cache refreshes when mtime changes."""
+    """Get abstract by PMID; prefer Mongo, fallback to file cache."""
     target = str(abs_id)
+
+    # Try Mongo first (no need to consider mtime)
+    if abstracts_col is not None:
+        try:
+            doc = abstracts_col.find_one({"pmid": target})
+            if doc:
+                if doc.get("pmid") is not None:
+                    doc["pmid"] = str(doc["pmid"])
+                return _normalize_abstract(doc)
+        except Exception:
+            pass
+
+    # Fallback to file-backed cache
     path = _abs_path()
     mtime = path.stat().st_mtime if path.exists() else 0.0
     with _lock:
@@ -104,8 +164,13 @@ def get_abstract_by_id(abs_id: Union[str, int]) -> Optional[Dict[str, Any]]:
         return _state["index"].get(target)
 
 def get_all_pmids() -> List[str]:
-    """Return all PMIDs as strings."""
-    load_abstracts()  # ensure cache
+    """Return all PMIDs as strings; prefer Mongo, fallback to file cache."""
+    if abstracts_col is not None:
+        try:
+            return [str(d.get("pmid")) for d in abstracts_col.find({}, {"pmid": 1}) if d.get("pmid")]
+        except Exception:
+            pass
+    load_abstracts()  # ensure cache from file
     with _lock:
         return list(_state["index"].keys())
 

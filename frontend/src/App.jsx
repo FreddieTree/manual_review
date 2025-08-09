@@ -5,6 +5,7 @@ import clsx from "clsx";
 import Loader from "./components/ui/Loader";
 import ErrorBoundary from "./components/ErrorBoundary";
 import useScrollRestoration from "./hooks/useScrollRestoration";
+import { useUser } from "./hooks/useUser";
 
 // === Lazy pages ===
 const LoginPage = React.lazy(() => import("./pages/LoginPage"));
@@ -58,6 +59,7 @@ export function prefetchImport(importFn) {
 
 export default function App() {
   const { pathname } = useLocation();
+  const { user, loading: userLoading } = useUser();
 
   useScrollRestoration();
   usePageTitle(pathname);
@@ -136,7 +138,20 @@ export default function App() {
                       </div>
                     }
                   >
-                    <Suspense fallback={fallbackEl}>{r.element}</Suspense>
+                    <Suspense fallback={fallbackEl}>
+                      {r.path.startsWith("/admin") ? (
+                        userLoading ? (
+                          fallbackEl
+                        ) : user?.is_admin ? (
+                          r.element
+                        ) : (
+                          <Navigate to="/" replace />
+                        )
+                      ) : (
+                        // Prevent login route from recursively nesting next params
+                        r.path === "/" && userLoading ? fallbackEl : r.element
+                      )}
+                    </Suspense>
                   </ErrorBoundary>
                 }
               />
