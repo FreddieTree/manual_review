@@ -403,7 +403,7 @@ def audit_review_submission(
                 state = structured_for_sentence[ass_idx]
                 decision = (state.get("review") or "accept").lower()
                 comment = state.get("comment", "") or ""
-                is_modified_flag = bool(state.get("isModified", False))
+                is_modified_flag = False
             else:
                 # legacy flat fields
                 decision = (post_data.get(f"review_{sent_idx}_{ass_idx}") or "accept").lower()
@@ -445,46 +445,14 @@ def audit_review_submission(
                 "negation": bool(neg),
             }
 
-            # Validations
+            # Minimal validations: only enforce that 'uncertain' has a reason.
+            # We do not duplicate the frontend's subject/object-in-sentence checks
+            # and whitelist checks here to avoid over-validation and duplicate prompts.
             field_issues = []
-            field_issues += _validate_fields_against_sentence(
-                sentence_text, subj or "", obj or "",
-                sentence_index=sent_idx, assertion_index=ass_idx, addition=False
-            )
-            field_issues += _validate_whitelists(
-                pred or "", subj_type or "", obj_type or "",
-                sentence_index=sent_idx, assertion_index=ass_idx, addition=False
-            )
 
-            # Accept is disallowed if any error is present
-            if decision == "accept" and any(v["level"] == "error" for v in field_issues):
-                field_issues.append(
-                    _mk_violation(
-                        level="error",
-                        code="accept_disallowed_due_to_issues",
-                        message="System found issues in this assertion. Accept is not allowed; choose Modify/Reject or add a new assertion.",
-                        field=None,
-                        sentence_index=sent_idx,
-                        assertion_index=ass_idx,
-                        addition=False,
-                    )
-                )
+            # For accept/modify/reject we do not add blocking errors here.
 
-            # Modify should change at most one field
-            change_count = _count_changes(assertion, updated_snapshot)
-            if decision == "modify" or is_modified_flag:
-                if change_count > 1:
-                    field_issues.append(
-                        _mk_violation(
-                            level="warning",
-                            code="multiple_changes",
-                            message="More than one change detected. Prefer Reject or mark Uncertain, then add a clean assertion.",
-                            field=None,
-                            sentence_index=sent_idx,
-                            assertion_index=ass_idx,
-                            addition=False,
-                        )
-                    )
+            # No 'modify' decision in the simplified flow; reviewers choose accept/reject/uncertain only.
 
             # Uncertain requires a reason (comment required)
             if decision == "uncertain" and not (comment or "").strip():
@@ -506,12 +474,8 @@ def audit_review_submission(
                 can_commit = False
 
             # Emit logs (append-only; no physical delete/modify allowed)
-            if decision == "accept" and not is_modified_flag:
-                # No log for plain accepts (historical behavior)
-                continue
-            elif decision == "modify" or (decision == "accept" and is_modified_flag):
-                # Only allow modify of existing assertions during this review session; uploaded assertions from others
-                # cannot be edited here. We treat it as your own "modify" to create a new snapshot.
+            if decision in ("accept",):
+                # Record accept as an explicit log for traceability
                 logs.append(
                     update_assertion(
                         original=assertion,
@@ -547,69 +511,39 @@ def audit_review_submission(
                 )
 
         # ---- New assertion via legacy flat fields --------------------------
-        subj = (post_data.get(f"useradd_subject_{sent_idx}", "") or "").strip()
-        pred = (post_data.get(f"useradd_predicate_{sent_idx}", "") or "").strip()
-        obj = (post_data.get(f"useradd_object_{sent_idx}", "") or "").strip()
-        neg = _parse_bool(post_data.get(f"useradd_negation_{sent_idx}", "false"))
-        comment = post_data.get(f"useradd_comment_{sent_idx}", "") or ""
-        subj_type = (post_data.get(f"useradd_subject_type_{sent_idx}", "") or "").strip()
-        obj_type = (post_data.get(f"useradd_object_type_{sent_idx}", "") or "").strip()
+        # Accept both 0-based and 1-based legacy indices for add fields
+        def _lg(key_base: str, default: Any = ""):
+            v0 = post_data.get(f"{key_base}_{sent_idx}")
+            if v0 is None:
+                v1 = post_data.get(f"{key_base}_{sent_idx+1}")
+                return default if v1 is None else v1
+            return v0
+
+        subj = ( _lg("useradd_subject", "") or "" ).strip()
+        pred = ( _lg("useradd_predicate", "") or "" ).strip()
+        obj = ( _lg("useradd_object", "") or "" ).strip()
+        neg = _parse_bool(_lg("useradd_negation", "false"))
+        comment = _lg("useradd_comment", "") or ""
+        subj_type = ( _lg("useradd_subject_type", "") or "" ).strip()
+        obj_type = ( _lg("useradd_object_type", "") or "" ).strip()
 
         if subj or pred or obj:
             add_issues: List[Dict[str, Any]] = []
+            # Trust frontend to restrict choices; server does not re-validate subject/object location
+            # or whitelists to avoid duplicate errors. Only ensure required core fields exist.
             if not subj:
-                add_issues.append(
-                    _mk_violation(
-                        level="error",
-                        code="subject_missing",
-                        message="Subject is required for new assertion.",
-                        field="subject",
-                        sentence_index=sent_idx,
-                        assertion_index=None,
-                        addition=True,
-                    )
-                )
+                add_issues.append(_mk_violation(level="error", code="subject_missing", message="Subject is required for new assertion.", field="subject", sentence_index=sent_idx, assertion_index=None, addition=True))
             if not pred:
-                add_issues.append(
-                    _mk_violation(
-                        level="error",
-                        code="predicate_missing",
-                        message="Predicate is required for new assertion.",
-                        field="predicate",
-                        sentence_index=sent_idx,
-                        assertion_index=None,
-                        addition=True,
-                    )
-                )
+                add_issues.append(_mk_violation(level="error", code="predicate_missing", message="Predicate is required for new assertion.", field="predicate", sentence_index=sent_idx, assertion_index=None, addition=True))
             if not obj:
-                add_issues.append(
-                    _mk_violation(
-                        level="error",
-                        code="object_missing",
-                        message="Object is required for new assertion.",
-                        field="object",
-                        sentence_index=sent_idx,
-                        assertion_index=None,
-                        addition=True,
-                    )
-                )
-
-            # Exact-match & whitelist checks
-            add_issues += _validate_fields_against_sentence(
-                sentence_text, subj or "", obj or "",
-                sentence_index=sent_idx, assertion_index=None, addition=True
-            )
-            add_issues += _validate_whitelists(
-                pred or "", subj_type or "", obj_type or "",
-                sentence_index=sent_idx, assertion_index=None, addition=True
-            )
+                add_issues.append(_mk_violation(level="error", code="object_missing", message="Object is required for new assertion.", field="object", sentence_index=sent_idx, assertion_index=None, addition=True))
 
             violations.extend(add_issues)
             if any(v["level"] == "error" for v in add_issues):
                 can_commit = False
 
-            # Only create "add" log when the 3 core fields exist and no error
-            if subj and pred and obj and not any(v["level"] == "error" for v in add_issues):
+            # Only create "add" log when the 3 core fields exist
+            if subj and pred and obj:
                 logs.append(
                     new_assertion(
                         subject=subj,
@@ -644,5 +578,6 @@ def audit_review_submission(
     return {
         "logs": logs,
         "violations": violations,
-        "can_commit": bool(can_commit),
+        # Only block for uncertain-without-note or missing core fields for add
+        "can_commit": not any(v.get("code") in ("uncertain_reason_required", "subject_missing", "predicate_missing", "object_missing") for v in violations),
     }

@@ -284,18 +284,6 @@ function AbstractMetaCardImpl(
                             <InfoRow term="DOI">
                                 <div className="flex items-center gap-2 min-w-0">
                                     <span className="truncate">{doi}</span>
-                                    <Tooltip label="Resolve DOI">
-                                        <a
-                                            href={`https://doi.org/${doi}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-300 hover:underline"
-                                            aria-label="Open DOI"
-                                        >
-                                            <ArrowTopRightOnSquareIcon className="w-4 h-4" />
-                                            <span className="text-[13px]">Open</span>
-                                        </a>
-                                    </Tooltip>
                                 </div>
                             </InfoRow>
                         )}
@@ -384,8 +372,10 @@ function AbstractMetaCardImpl(
     );
 }
 
+const AbstractMetaCard = memo(forwardRef(AbstractMetaCardImpl));
+
 if (process.env.NODE_ENV !== "production") {
-    AbstractMetaCardImpl.propTypes = {
+    AbstractMetaCard.propTypes = {
         className: PropTypes.string,
         title: PropTypes.string.isRequired,
         pmid: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
@@ -415,5 +405,4 @@ if (process.env.NODE_ENV !== "production") {
     };
 }
 
-const AbstractMetaCard = memo(forwardRef(AbstractMetaCardImpl));
 export default AbstractMetaCard;

@@ -156,8 +156,10 @@ function BadgeImpl(
     );
 }
 
+const Badge = forwardRef(BadgeImpl);
+
 if (process.env.NODE_ENV !== "production") {
-    BadgeImpl.propTypes = {
+    Badge.propTypes = {
         children: PropTypes.node,
         variant: PropTypes.oneOf(["solid", "subtle", "outline"]),
         color: PropTypes.oneOf([
@@ -185,5 +187,4 @@ if (process.env.NODE_ENV !== "production") {
     };
 }
 
-const Badge = forwardRef(BadgeImpl);
 export default Badge;

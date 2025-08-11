@@ -12,7 +12,7 @@ import { getReviewers } from "../api";
 const systemFont = "system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif";
 const LOGIN_PATH = (import.meta.env.VITE_LOGIN_PATH || "/").replace(/\/+$/, "") || "/";
 
-function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false }, ref) {
+function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false, withMargin = true, adminActions = null, maxWidth = "1240px" }, ref) {
     const { user, loading: userLoading, logout } = useUser();
     const navigate = useNavigate();
     const location = useLocation();
@@ -64,19 +64,20 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
     const handleExit = useCallback(async () => {
         setShowExitConfirm(false);
         if (onExit) {
-            onExit();
+            try {
+                await Promise.resolve(onExit());
+            } catch {}
             return;
         }
         try {
-            await logout(); // ensure logout completes
+            await logout(); // ensure logout completes and hard-redirects to login
         } catch (e) {
-            // swallow but log
             // eslint-disable-next-line no-console
             console.warn("Logout failed:", e);
+            // Fallback soft redirect even if logout throws
+            const next = encodeURIComponent(location.pathname + location.search);
+            navigate(`${LOGIN_PATH}?next=${next}`, { replace: true });
         }
-        // explicit redirect to login preserving next
-        const next = encodeURIComponent(location.pathname + location.search);
-        navigate(`${LOGIN_PATH}?next=${next}`, { replace: true });
     }, [onExit, logout, navigate, location]);
 
     const greetName = useMemo(() => {
@@ -94,15 +95,18 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
                 ref={ref}
                 className={clsx(
                     // Remove overflow-hidden so dropdowns/portals can escape the container
-                    "relative isolate mx-auto my-4 rounded-3xl",
-                    "bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800",
+                    "relative isolate z-50 overflow-visible mx-auto",
+                    withMargin ? "my-4" : "my-0",
+                    "bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-[24px]",
                     "shadow-xl",
                     "backdrop-blur-sm",
                     "transition-colors",
-                    "flex flex-col md:flex-row items-center justify-between px-6 py-4",
+                    // For admin, keep two rows; others can switch to row on md
+                    isAdminView ? "flex flex-col" : "flex flex-col md:flex-row",
+                    "items-center justify-between px-6 py-5",
                     className
                 )}
-                style={{ maxWidth: "1100px", fontFamily: systemFont }}
+                style={{ maxWidth, fontFamily: systemFont }}
                 aria-label="Top bar"
             >
                 <div className="flex-1 min-w-0 flex flex-col sm:flex-row sm:items-center gap-3">
@@ -110,7 +114,7 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
                         <div className="flex flex-col">
                             <div className="flex items-baseline gap-2">
                                 <div className="text-2xl font-extrabold text-slate-900 dark:text-white">Admin Dashboard</div>
-                                <div className="text-sm font-semibold text-indigo-500">v2</div>
+                                <div className="text-sm font-semibold text-indigo-500">v3</div>
                             </div>
                             <div className="text-xs text-gray-600 dark:text-gray-300">Overview &amp; controls</div>
                         </div>
@@ -183,7 +187,7 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
                                             </span>
                                             <ChevronDownIcon className="w-4 h-4 flex-shrink-0 text-gray-500" />
                                         </Listbox.Button>
-                                        <Listbox.Options className="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-lg py-1 text-sm">
+                                        <Listbox.Options className="absolute z-[999] mt-1 max-h-60 w-full overflow-auto rounded-xl bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 shadow-2xl py-1 text-sm">
                                             <Listbox.Option
                                                 key="__all__"
                                                 value={null}
@@ -232,13 +236,20 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
                         Exit
                     </button>
                 </div>
+                {isAdminView && adminActions && (
+                    <div className="w-full mt-3 pt-2 border-t border-gray-100 dark:border-slate-800">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] leading-none">
+                            {adminActions}
+                        </div>
+                    </div>
+                )}
             </section>
 
             <ConfirmModal
                 open={showExitConfirm}
                 title="Exit"
                 description="Are you sure you want to leave? Any unsaved work will be lost."
-                confirmText="Log out"
+                confirmText="Exit"
                 onConfirm={handleExit}
                 onCancel={() => setShowExitConfirm(false)}
             />
@@ -246,13 +257,18 @@ function TopBarImpl({ abstract = {}, onExit, className = "", isAdminView = false
     );
 }
 
+const TopBar = memo(forwardRef(TopBarImpl));
+
 if (process.env.NODE_ENV !== "production") {
-    TopBarImpl.propTypes = {
+    TopBar.propTypes = {
         abstract: PropTypes.object,
         onExit: PropTypes.func,
         className: PropTypes.string,
         isAdminView: PropTypes.bool,
+        withMargin: PropTypes.bool,
+        adminActions: PropTypes.node,
+        maxWidth: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
     };
 }
 
-export default memo(forwardRef(TopBarImpl));
+export default TopBar;

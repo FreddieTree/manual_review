@@ -124,8 +124,10 @@ function CopyButtonImpl(
     );
 }
 
+const CopyButton = forwardRef(CopyButtonImpl);
+
 if (process.env.NODE_ENV !== "production") {
-    CopyButtonImpl.propTypes = {
+    CopyButton.propTypes = {
         value: PropTypes.string.isRequired,
         ariaLabel: PropTypes.string,
         size: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
@@ -136,5 +138,4 @@ if (process.env.NODE_ENV !== "production") {
     };
 }
 
-const CopyButton = forwardRef(CopyButtonImpl);
 export default CopyButton;

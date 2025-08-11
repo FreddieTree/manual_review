@@ -73,10 +73,12 @@ function ThemeSwitcherImpl({ className = "" }, ref) {
     );
 }
 
+const ThemeSwitcher = memo(forwardRef(ThemeSwitcherImpl));
+
 if (process.env.NODE_ENV !== "production") {
-    ThemeSwitcherImpl.propTypes = {
+    ThemeSwitcher.propTypes = {
         className: PropTypes.string,
     };
 }
 
-export default memo(forwardRef(ThemeSwitcherImpl));
+export default ThemeSwitcher;

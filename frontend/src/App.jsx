@@ -91,9 +91,9 @@ export default function App() {
   return (
     <div
       className={clsx(
-        "min-h-screen font-sans",
-        // 柔和的 Apple 风格背景分层
-        "bg-gradient-to-br from-sky-50 via-blue-50 to-slate-100",
+        "min-h-screen font-sans text-apple",
+        // Apple-like layered backgrounds with dark support
+        "bg-gradient-to-br from-sky-50 via-blue-50 to-slate-100 dark:from-slate-900 dark:via-slate-950 dark:to-slate-900",
         "text-text"
       )}
     >
@@ -114,7 +114,9 @@ export default function App() {
         className={clsx(
           "flex-1 flex flex-col",
           "py-8 md:py-10 px-4 md:px-8",
-          // 减少动画偏好支持（如果你在子组件用到了过渡/动画）
+          // dark surface fallback
+          "dark:text-slate-200",
+          // Reduce motion support
           "motion-reduce:transition-none"
         )}
         aria-live="polite"

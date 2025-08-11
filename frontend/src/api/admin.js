@@ -33,37 +33,17 @@ function normalizeAdminStats(obj) {
  * client 已经配置 baseURL 为 /api。
  */
 export async function getAdminStats({ signal } = {}) {
-    const candidates = [
-        "admin/stats",
-        "admin/overview",
-        "stats/overview",
-        "admin/dashboard",
-        "stats",
-    ];
-
-    for (const path of candidates) {
-        try {
-            console.debug("[getAdminStats] trying", path);
-            const body = await get(path, { signal }, { unwrap: "data" });
-            console.debug("[getAdminStats] raw response from", path, ":", body);
-
-            const raw =
-                (body && typeof body === "object" && body.data) ||
-                (body && typeof body === "object" && body.stats) ||
-                body;
-
-            const normalized = normalizeAdminStats(raw);
-            if (normalized) {
-                console.debug("[getAdminStats] normalized from", path, ":", normalized);
-                return normalized;
-            }
-        } catch (err) {
-            console.warn("[getAdminStats] failed for", path, err);
-            // 继续下一个候选
-        }
+    // Single canonical endpoint to avoid canceled errors from racing candidates
+    try {
+        const body = await get("admin/stats", { signal }, { unwrap: "data" });
+        const raw = (body && typeof body === "object" && body.data) || body;
+        const normalized = normalizeAdminStats(raw);
+        if (normalized) return normalized;
+        throw new Error("Invalid admin stats payload");
+    } catch (err) {
+        // Rethrow a clean error without noisy console warnings
+        throw err;
     }
-
-    throw new Error("Unable to load admin stats from any endpoint.");
 }
 
 // Analytics (global or reviewer-scoped)
@@ -104,26 +84,40 @@ export function exportPassed() {
   }
 }
 
-// POST download with a temporary form to include body and cookies
-export function exportSnapshot() {
-  try {
-    const url = `${BASE_URL.replace(/\/+$/, "")}/admin/export_snapshot?download=1`;
-    const form = document.createElement("form");
-    form.action = url;
-    form.method = "POST";
-    form.style.display = "none";
-    const input = document.createElement("input");
-    input.type = "hidden";
-    input.name = "confirm";
-    input.value = "true";
-    form.appendChild(input);
-    document.body.appendChild(form);
-    form.submit();
-    setTimeout(() => document.body.removeChild(form), 2000);
-    return Promise.resolve(true);
-  } catch (e) {
-    return Promise.reject(e);
+// Robust POST download using fetch + blob to avoid page navigation
+export async function exportSnapshot() {
+  // Use a relative URL to ensure same-origin cookies flow via dev proxy (avoids SameSite=Lax POST issues)
+  const url = `/api/admin/export_snapshot?download=1`;
+  const params = new URLSearchParams({ confirm: "true" });
+  const res = await fetch(url, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: params.toString(),
+  });
+  if (!res.ok) {
+    let msg = "Export failed";
+    try {
+      const data = await res.json();
+      if (data && (data.message || data.error)) msg = data.message || data.error;
+    } catch {}
+    throw new Error(msg);
   }
+  const blob = await res.blob();
+  // Try to extract filename from Content-Disposition
+  const disp = res.headers.get("Content-Disposition") || "";
+  const match = /filename\*=UTF-8''([^;]+)|filename\s*=\s*"?([^";]+)"?/i.exec(disp);
+  const filename = decodeURIComponent(match?.[1] || match?.[2] || `final_consensus_snapshot_${Date.now()}.jsonl`);
+  const a = document.createElement("a");
+  const objectUrl = URL.createObjectURL(blob);
+  a.href = objectUrl;
+  a.download = filename;
+  a.rel = "noopener";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(objectUrl), 2000);
+  return true;
 }
 
 export const uploadAbstracts = (payload, { signal } = {}) => {

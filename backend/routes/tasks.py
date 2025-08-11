@@ -10,7 +10,7 @@ from flask import Blueprint, request, session, jsonify
 
 from ..services.assignment import assign_abstract_to_reviewer, release_expired_locks, release_assignment, touch_assignment
 from ..models.abstracts import get_abstract_by_id
-from ..models.logs import log_review_action
+from ..models.logs import log_review_action, load_logs
 from ..services.stats import get_stats_for_reviewer   # <-- 改为服务层
 from ..services.audit import audit_review_submission
 
@@ -78,7 +78,15 @@ def api_assigned_abstract():
         session["current_abs_id"] = pmid
         abstract = get_abstract_by_id(pmid)
         if not abstract:
-            return error_response(f"Assigned abstract {pmid} not found", status=404, error_code="abstract_not_found")
+            # Gracefully fall back to next best candidate rather than 500
+            logger.warning("Assigned abstract %s not found; retrying assignment", pmid)
+            pmid2 = assign_abstract_to_reviewer(email, name, prefer_current=None)
+            if not pmid2:
+                return success_response({"no_more_tasks": True}, message="No available abstracts to assign.")
+            session["current_abs_id"] = pmid2
+            abstract = get_abstract_by_id(pmid2)
+            if not abstract:
+                return error_response("Assigned abstract unexpectedly missing", status=404, error_code="abstract_not_found")
 
         stats: Dict[str, Any] = {}
         try:
@@ -86,11 +94,30 @@ def api_assigned_abstract():
         except Exception:
             logger.debug("Failed to fetch reviewer stats for %s", email)
 
-        payload = {"abstract": abstract, "assigned_pmid": pmid, "reviewer_stats": stats}
+        payload = {"abstract": abstract, "assigned_pmid": session.get("current_abs_id"), "reviewer_stats": stats}
+        # Ensure no ObjectId leaks into JSON
+        try:
+            from bson.objectid import ObjectId  # type: ignore
+            def _clean(o):
+                if isinstance(o, dict):
+                    o.pop("_id", None)
+                    for k, v in list(o.items()):
+                        o[k] = _clean(v)
+                elif isinstance(o, list):
+                    return [_clean(x) for x in o]
+                elif 'ObjectId' in type(o).__name__:
+                    return str(o)
+                return o
+            payload = _clean(payload)
+        except Exception:
+            try:
+                payload.pop("_id", None)
+            except Exception:
+                pass
         return success_response(payload)
     except Exception as e:
-        logger.exception("Error in assigned_abstract for %s", email)
-        return error_response("Failed to assign abstract", status=500, error_code="assignment_error")
+        logger.exception("Error in assigned_abstract for %s: %s", email, e)
+        return error_response(f"Failed to assign abstract: {e}", status=500, error_code="assignment_error")
 
 
 @task_api.route("/heartbeat", methods=["POST"])  # keep lock alive
@@ -172,14 +199,19 @@ def api_submit_review():
             can_commit = True
 
         if not can_commit:
-            return error_response(
-                "Submission has validation errors; please resolve and resubmit.",
-                status=400,
-                error_code="validation_failed",
-                data={"violations": violations},
-            )
+            # Only block submission for truly blocking issues
+            blocking_codes = {"uncertain_reason_required", "subject_missing", "predicate_missing", "object_missing"}
+            is_blocking = any((v.get("code") in blocking_codes) for v in violations)
+            if is_blocking:
+                return error_response(
+                    "Submission has validation errors; please resolve and resubmit.",
+                    status=400,
+                    error_code="validation_failed",
+                    data={"violations": violations},
+                )
+            # Otherwise, proceed and record logs despite non-blocking issues
 
-        # Only proceed to write when all assertions for this abstract are compliant; append-only
+        # Write logs (append-only)
         written = 0
         for log in logs:
             try:
@@ -187,6 +219,19 @@ def api_submit_review():
                 written += 1
             except Exception as e:
                 logger.error("Failed to write individual log: %s", e)
+
+        # Log a meta submission event for the abstract
+        try:
+            log_review_action({
+                "action": "submit_review",
+                "pmid": pmid,
+                "creator": email,
+                "name": name,
+                "logs_written": written,
+                "created_at": time.time(),
+            })
+        except Exception:
+            logger.debug("failed to write submit_review meta log")
 
         session.pop("current_abs_id", None)
         release_expired_locks()
@@ -200,3 +245,50 @@ def api_submit_review():
     except Exception as e:
         logger.exception("Audit or persistence failure for reviewer %s on %s", email, pmid)
         return error_response("Audit failed", status=500, error_code="audit_error")
+
+
+@task_api.route("/abstract_overview/<pmid>", methods=["GET"])
+@require_login
+def api_abstract_overview(pmid: str):
+    """Return reviewer order for this abstract and brief stats of the first reviewer if any.
+
+    Payload: { success, data: { reviewer_order: 1|2, peer: { email }, peer_counts: { add, accept, reject, uncertain } } }
+    """
+    email = session.get("email")
+    if not email:
+        return error_response("Not authenticated", status=401)
+    try:
+        pid = str(pmid)
+        logs = [l for l in load_logs() if str(l.get("pmid") or l.get("abstract_id") or "") == pid]
+        # Distinct reviewers who have actions for this pmid (exclude current user)
+        reviewers = []
+        seen = set()
+        for l in logs:
+            actor = (l.get("creator") or l.get("reviewer") or l.get("email") or "").strip().lower()
+            if not actor or actor == email:
+                continue
+            if actor not in seen:
+                seen.add(actor)
+                reviewers.append(actor)
+
+        order = 1 if not reviewers else 2
+        peer_email = reviewers[0] if reviewers else None
+
+        counts = {"add": 0, "accept": 0, "reject": 0, "uncertain": 0}
+        if peer_email:
+            for l in logs:
+                actor = (l.get("creator") or l.get("reviewer") or l.get("email") or "").strip().lower()
+                if actor != peer_email:
+                    continue
+                action = (l.get("action") or "").strip().lower()
+                if action in counts:
+                    counts[action] += 1
+
+        return success_response({
+            "reviewer_order": order,
+            "peer": {"email": peer_email} if peer_email else None,
+            "peer_counts": counts,
+        })
+    except Exception:
+        logger.exception("abstract_overview failed for %s", pmid)
+        return error_response("Overview failed", status=500, error_code="overview_error")

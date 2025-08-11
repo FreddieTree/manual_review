@@ -12,3 +12,6 @@ export const releaseAssignment = ({ signal } = {}) =>
 
 export const heartbeat = ({ signal } = {}) =>
     post("heartbeat", {}, { signal }, { unwrap: "data" });
+
+export const getAbstractOverview = (pmid, { signal } = {}) =>
+    get(`abstract_overview/${encodeURIComponent(pmid)}`, { signal }, { unwrap: "data" });

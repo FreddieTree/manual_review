@@ -6,7 +6,9 @@ from io import BytesIO
 import time
 import json
 
-from ..services.aggregation import export_final_consensus, get_all_pmids, aggregate_final_decisions_for_pmid  # 见下方说明
+from ..services.aggregation import export_final_consensus, aggregate_final_decisions_for_pmid  # 见下方说明
+from ..models.abstracts import get_all_pmids
+from ..models.logs import log_review_action
 from ..services.export_service import export_passed_assertions
 
 export_api = Blueprint("export_api", __name__, url_prefix="/api")
@@ -24,6 +26,7 @@ def api_export_consensus():
                 finals.extend(aggregate_final_decisions_for_pmid(pid))
             buf = BytesIO()
             for rec in finals:
+                rec.pop("_id", None)
                 buf.write((json.dumps(rec, ensure_ascii=False) + "\n").encode("utf-8"))
             buf.seek(0)
             ts = int(time.time())
@@ -31,9 +34,27 @@ def api_export_consensus():
             # very light sanitization
             prefix = "".join(c for c in prefix if c.isalnum() or c in ("_", "-")) or "final_consensus"
             filename = f"{prefix}_{ts}.jsonl"
+            try:
+                log_review_action({
+                    "action": "admin_export_consensus",
+                    "by": session.get("email", "admin"),
+                    "path": filename,
+                    "created_at": time.time(),
+                })
+            except Exception:
+                pass
             return send_file(buf, as_attachment=True, download_name=filename, mimetype="application/json")
 
         count, out_path = export_final_consensus()
+        try:
+            log_review_action({
+                "action": "admin_export_consensus",
+                "by": session.get("email", "admin"),
+                "path": str(out_path),
+                "created_at": time.time(),
+            })
+        except Exception:
+            pass
         return jsonify({"success": True, "exported_count": count, "path": str(out_path)})
     except Exception as e:
         current_app.logger.exception("Export consensus failed")
@@ -65,14 +86,36 @@ def api_export_passed():
                                 "sentence": sent_text,
                                 "assertion": a,
                             }
+                            out.pop("_id", None)
                             buf.write((json.dumps(out, ensure_ascii=False) + "\n").encode("utf-8"))
                             total += 1
             buf.seek(0)
             ts = int(time.time())
             filename = f"passed_assertions_{ts}.jsonl"
+            try:
+                log_review_action({
+                    "action": "admin_export_passed",
+                    "by": session.get("email", "admin"),
+                    "path": filename,
+                    "created_at": time.time(),
+                    "total_records": total,
+                })
+            except Exception:
+                pass
             return send_file(buf, as_attachment=True, download_name=filename, mimetype="application/json")
 
         path, total, sha1 = export_passed_assertions("data/exports")
+        try:
+            log_review_action({
+                "action": "admin_export_passed",
+                "by": session.get("email", "admin"),
+                "path": str(path),
+                "created_at": time.time(),
+                "total_records": total,
+                "sha1": sha1,
+            })
+        except Exception:
+            pass
         return jsonify({
             "success": True,
             "path": path,

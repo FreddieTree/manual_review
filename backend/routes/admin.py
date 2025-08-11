@@ -1,6 +1,6 @@
 # backend/routes/admin.py
 from __future__ import annotations
-from flask import Blueprint, jsonify, request, session
+from flask import Blueprint, jsonify, request, session, current_app
 from pathlib import Path
 import json
 import time
@@ -155,9 +155,20 @@ def admin_analytics():
     reviewer = request.args.get("reviewer")
     try:
         data = compute_platform_analytics(reviewer_email=reviewer)
-        return jsonify({"success": True, "data": data})
+        # Strip any _id/ObjectId remnants just in case
+        def _clean(o):
+            if isinstance(o, dict):
+                o.pop("_id", None)
+                return {k: _clean(v) for k, v in o.items()}
+            if isinstance(o, list):
+                return [_clean(x) for x in o]
+            if 'ObjectId' in type(o).__name__:
+                return str(o)
+            return o
+        return jsonify({"success": True, "data": _clean(data)})
     except Exception as e:
-        return jsonify({"success": False, "message": str(e)}), 500
+        current_app.logger.exception("Analytics failed")
+        return jsonify({"success": False, "message": f"analytics_error: {e}"}), 500
 
 
 @admin_api.post("/upload_abstracts")

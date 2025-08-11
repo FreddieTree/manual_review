@@ -9,6 +9,16 @@ let listeners = [];
 
 const STORAGE_KEY = "manual_review_current_user";
 const TTL_MS = 5 * 60 * 1000; // 5 minutes
+const LOGIN_PATH = (import.meta.env.VITE_LOGIN_PATH || "/").replace(/\/+$/, "") || "/";
+
+function isAtLoginPath() {
+    try {
+        const here = window.location?.pathname?.replace(/\/+$/, "") || "/";
+        return here === LOGIN_PATH.replace(/\/+$/, "");
+    } catch {
+        return false;
+    }
+}
 
 function loadFromStorage() {
     try {
@@ -112,11 +122,10 @@ function normalizeUser(raw) {
 export function useUser() {
     const [state, setState] = useState(() => {
         const cached = globalUser ?? loadFromStorage();
-        return {
-            user: cached,
-            loading: globalLoading || (cached == null && !globalLoading),
-            error: globalError,
-        };
+        // On login route, do not show loading spinner and do not auto-fetch whoami
+        const onLogin = isAtLoginPath();
+        const loading = onLogin ? false : (globalLoading || (cached == null && !globalLoading));
+        return { user: cached, loading, error: globalError };
     });
 
     const mountedRef = useRef(true);
@@ -129,7 +138,7 @@ export function useUser() {
         };
         listeners.push(updater);
 
-        if (globalUser == null && !globalLoading) {
+        if (globalUser == null && !globalLoading && !isAtLoginPath()) {
             fetchUser();
         } else {
             broadcast();
@@ -164,7 +173,8 @@ export function useUser() {
         clearStorage();
         broadcast();
         const loginPath = (import.meta.env.VITE_LOGIN_PATH || "/").replace(/\/+$/, "") || "/";
-        window.location.href = loginPath;
+        // Use replace to avoid back navigation into a protected page
+        window.location.replace(loginPath);
     }, []);
 
     return {

@@ -166,7 +166,10 @@ def _group_logs_for_pmid_ordered(pmid: str, logs: List[Dict[str, Any]]) -> Dict[
         rid = (log.get("related_to") or "").strip()
         aid = (log.get("assertion_id") or "").strip()
 
-        if rid:
+        ch = (log.get("content_hash") or "").strip()
+        if ch:
+            key = ch
+        elif rid:
             key = rid
         elif aid:
             key = aid
@@ -235,8 +238,16 @@ def consensus_decision(
             return ConsensusResult.UNCERTAIN
         return ConsensusResult.CONFLICT
 
-    support = counter.get(Action.ACCEPT.value, 0) + counter.get(Action.MODIFY.value, 0)
-    if support >= min_reviewers_for_consensus:
+    # Require decisions from distinct reviewers for consensus
+    support_reviewers = set()
+    for l in logs:
+        act = _norm_action(l.get("action"))
+        if act in (Action.ACCEPT.value, Action.MODIFY.value):
+            who = (l.get("creator") or l.get("reviewer") or "").strip().lower()
+            if who:
+                support_reviewers.add(who)
+
+    if len(support_reviewers) >= min_reviewers_for_consensus:
         if require_exact_content_match:
             modify_logs = [l for l in logs if _norm_action(l.get("action")) == Action.MODIFY.value]
             if len(modify_logs) > 1:
@@ -255,7 +266,8 @@ def consensus_decision(
                     return ConsensusResult.CONFLICT
         return ConsensusResult.CONSENSUS
 
-    return ConsensusResult.UNCERTAIN
+    # Not enough distinct reviewers yet -> pending
+    return ConsensusResult.PENDING
 
 # ---------- Public API ------------------------------------------------------
 
@@ -395,7 +407,11 @@ def export_final_consensus(out_path: Optional[str | Path] = None) -> tuple[int, 
     Returns (written_count, file_path).
     """
     raw = _load_raw_logs()
-    pmids = list({*get_all_pmids(), *_pmids_from_logs(raw)})
+    # Authority is DB; union with logs for completeness
+    try:
+        pmids = list({*get_all_pmids(), *_pmids_from_logs(raw)})
+    except Exception:
+        pmids = _pmids_from_logs(raw)
 
     finals: List[Dict[str, Any]] = []
     for pid in pmids:

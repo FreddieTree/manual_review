@@ -199,7 +199,10 @@ const AssertionSummaryPanelImpl = (
     );
 };
 
-AssertionSummaryPanelImpl.propTypes = {
+const AssertionSummaryPanel = memo(forwardRef(AssertionSummaryPanelImpl));
+
+if (process.env.NODE_ENV !== "production") {
+AssertionSummaryPanel.propTypes = {
     sentenceResults: PropTypes.arrayOf(PropTypes.object),
     reviewStatesMap: PropTypes.object,
     overallDecision: PropTypes.string,
@@ -208,6 +211,6 @@ AssertionSummaryPanelImpl.propTypes = {
     onSentenceClick: PropTypes.func,
     style: PropTypes.object,
 };
+}
 
-const AssertionSummaryPanel = memo(forwardRef(AssertionSummaryPanelImpl));
 export default AssertionSummaryPanel;

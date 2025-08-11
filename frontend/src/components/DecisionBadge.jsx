@@ -110,8 +110,10 @@ function DecisionBadgeImpl(
     );
 }
 
+const DecisionBadge = memo(forwardRef(DecisionBadgeImpl));
+
 if (process.env.NODE_ENV !== "production") {
-    DecisionBadgeImpl.propTypes = {
+    DecisionBadge.propTypes = {
         decision: PropTypes.oneOf(["accept", "modify", "reject", "uncertain"]),
         variant: PropTypes.oneOf(["solid", "subtle", "outline", "pill"]),
         size: PropTypes.oneOf(["sm", "md", "lg"]),
@@ -121,5 +123,4 @@ if (process.env.NODE_ENV !== "production") {
         "aria-live": PropTypes.oneOf(["off", "polite", "assertive"]),
     };
 }
-
-export default memo(forwardRef(DecisionBadgeImpl));
+export default DecisionBadge;

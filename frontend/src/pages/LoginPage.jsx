@@ -206,13 +206,20 @@ function LoginPageImpl(_, ref) {
 
       const params = new URLSearchParams(location.search);
       const next = params.get("next");
+      const isSafePath = (p) => typeof p === "string" && /^\//.test(p) && !/^\/api\b/.test(p);
+      const nextPath = isSafePath(next) ? next : null;
 
       if (res.is_admin) {
-        navigate(next || "/admin", { replace: true });
+        // For admin accounts, always land on the admin dashboard unless next explicitly points inside /admin
+        const target = nextPath && nextPath.startsWith("/admin") ? nextPath : "/admin";
+        window.location.replace(target);
       } else if (res.no_more_tasks) {
-        navigate("/no_more_tasks", { replace: true });
+        window.location.replace("/no_more_tasks");
       } else {
-        navigate(next || "/review", { replace: true });
+        // For reviewers, allow next only if it points to a reviewer-allowed route
+        const allowed = ["/review", "/no_more_tasks"]; 
+        const target = nextPath && allowed.some((p) => nextPath.startsWith(p)) ? nextPath : "/review";
+        window.location.replace(target);
       }
     } catch (err) {
       const status = err?.status ?? err?.response?.status;
@@ -242,10 +249,10 @@ function LoginPageImpl(_, ref) {
   };
 
   return (
-    <div
-      ref={ref}
-      className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#f8fafc] via-[#eef3fb] to-[#e5ebfa] px-4"
-    >
+      <div
+        ref={ref}
+        className="min-h-screen flex items-center justify-center bg-gradient-to-br from-[#f8fafc] via-[#eef3fb] to-[#e5ebfa] dark:from-slate-900 dark:via-slate-950 dark:to-slate-900 px-4"
+      >
       <style>{`
         input:-webkit-autofill {
           box-shadow: 0 0 0 1000px #fff inset !important;
@@ -448,8 +455,10 @@ function LoginPageImpl(_, ref) {
   );
 }
 
+const LoginPage = memo(forwardRef(LoginPageImpl));
+
 if (process.env.NODE_ENV !== "production") {
-  LoginPageImpl.propTypes = {};
+  LoginPage.propTypes = {};
 }
 
-export default memo(forwardRef(LoginPageImpl));
+export default LoginPage;

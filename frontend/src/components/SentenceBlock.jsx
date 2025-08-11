@@ -288,8 +288,10 @@ function SentenceBlockImpl(
   );
 }
 
+const SentenceBlock = memo(forwardRef(SentenceBlockImpl));
+
 if (process.env.NODE_ENV !== "production") {
-  SentenceBlockImpl.propTypes = {
+  SentenceBlock.propTypes = {
     sentenceObj: PropTypes.shape({
       sentence_index: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
       sentence: PropTypes.string.isRequired,
@@ -303,5 +305,4 @@ if (process.env.NODE_ENV !== "production") {
   };
 }
 
-const SentenceBlock = memo(forwardRef(SentenceBlockImpl));
 export default SentenceBlock;

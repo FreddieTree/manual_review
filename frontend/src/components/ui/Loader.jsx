@@ -80,8 +80,10 @@ function LoaderImpl(
     );
 }
 
+const Loader = forwardRef(LoaderImpl);
+
 if (process.env.NODE_ENV !== "production") {
-    LoaderImpl.propTypes = {
+    Loader.propTypes = {
         size: PropTypes.oneOfType([PropTypes.oneOf(["sm", "md", "lg"]), PropTypes.number]),
         label: PropTypes.string,
         variant: PropTypes.oneOf(["primary", "neutral"]),
@@ -92,6 +94,4 @@ if (process.env.NODE_ENV !== "production") {
         className: PropTypes.string,
     };
 }
-
-const Loader = forwardRef(LoaderImpl);
 export default Loader;

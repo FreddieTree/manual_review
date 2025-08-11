@@ -20,7 +20,11 @@ from typing import Optional, Dict, List, Tuple, Any
 from ..config import REVIEW_TIMEOUT_MINUTES, MAX_REVIEWERS_PER_ABSTRACT, get_logger
 from ..models.logs import load_logs
 from ..models.abstracts import load_abstracts
-from ..models.db import db  # for optional cross-process locks TTL
+# Optional Mongo DB (for cross-process TTL). This must not crash when Mongo is unset.
+try:  # pragma: no cover - optional dependency at runtime
+    from ..models.db import db  # type: ignore
+except Exception:  # noqa: E722
+    db = None  # type: ignore
 
 logger = get_logger("services.assignment")
 
@@ -146,19 +150,20 @@ def touch_assignment(email: str, pmid: str) -> bool:
             logger.info("touch_assignment: created holder %s for %s", email, pmid)
         else:
             logger.debug("touch_assignment: refreshed holder %s for %s", email, pmid)
-        return True
 
-    # Optional cross-process lock heartbeat using TTL collection (best-effort)
-    try:
-        expire_at = now + _DEFAULT_TIMEOUT_SECONDS
-        # store as a float; in real TTL we would use datetime, here it's illustrative
-        db["locks"].update_one(
-            {"pmid": pmid},
-            {"$set": {"pmid": pmid, "expire_at": expire_at, "reviewers": list(dict(holder).keys()) if (holder := who_has_abstract(pmid)) else []}},
-            upsert=True,
-        )
-    except Exception:
-        pass
+        # Optional cross-process lock heartbeat using TTL collection (best-effort)
+        if db is not None:
+            try:
+                expire_at = now + _DEFAULT_TIMEOUT_SECONDS
+                holder = who_has_abstract(pmid)
+                db["locks"].update_one(
+                    {"pmid": pmid},
+                    {"$set": {"pmid": pmid, "expire_at": expire_at, "reviewers": list(dict(holder).keys()) if holder else []}},
+                    upsert=True,
+                )
+            except Exception:
+                pass
+        return True
 
 
 def assign_abstract_to_reviewer(
@@ -235,7 +240,7 @@ def assign_abstract_to_reviewer(
             pmid = str(abstract.get("pmid") or "")
             if not pmid:
                 continue
-            # Skip pmids that already reached 2 historical reviewers
+            # Skip pmids that already reached 2 historical reviewers (soft limit; a fallback below may relax this)
             if hist_counts.get(pmid, 0) >= 2:
                 continue
             lock = _LOCKS.get(pmid)
@@ -295,7 +300,35 @@ def assign_abstract_to_reviewer(
                 logger.info("Added reviewer %s to existing lock on abstract %s", email, pmid)
                 return pmid
 
-        logger.info("No available abstract to assign to reviewer %s", email)
+        # Fallback: if nothing matched due to historical cap or transient lock state,
+        # relax the historical reviewer constraint and attempt a best-effort assignment.
+        # This ensures reviewers aren't stranded on login when data exists but is saturated.
+        for abstract in load_abstracts():
+            pmid = str(abstract.get("pmid") or "")
+            if not pmid:
+                continue
+            lock = _LOCKS.get(pmid)
+            if not lock:
+                _LOCKS[pmid] = {
+                    "reviewers": {email: now},
+                    "assigned_at": now,
+                    "history": [{"email": email, "assigned_at": now, "released_at": None}],
+                }
+                logger.warning("Fallback assignment (relaxed cap): %s -> %s", email, pmid)
+                return pmid
+            reviewers = lock.setdefault("reviewers", {})
+            history = lock.setdefault("history", [])
+            if email in reviewers:
+                reviewers[email] = now
+                logger.debug("Fallback refresh for %s on %s", email, pmid)
+                return pmid
+            if len(reviewers) < _MAX_CONCURRENT_REVIEWERS:
+                reviewers[email] = now
+                history.append({"email": email, "assigned_at": now, "released_at": None})
+                logger.warning("Fallback added reviewer %s to %s", email, pmid)
+                return pmid
+
+        logger.info("No available abstract to assign to reviewer %s (no data or all saturated)", email)
         return None
 
 

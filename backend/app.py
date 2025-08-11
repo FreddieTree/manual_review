@@ -34,7 +34,7 @@ def create_app() -> Flask:
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
     # === Logging ===
-    debug_flag = str(os.environ.get("FLASK_DEBUG", os.environ.get("DEBUG", "1"))).lower() in ("1", "true", "yes")
+    debug_flag = str(os.environ.get("FLASK_DEBUG", os.environ.get("DEBUG", "0"))).lower() in ("1", "true", "yes")
     log_level = logging.DEBUG if debug_flag else logging.INFO
     logging.basicConfig(
         level=log_level,
@@ -42,6 +42,28 @@ def create_app() -> Flask:
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     app.logger.setLevel(log_level)
+
+    # Suppress noisy third-party debug logs (especially PyMongo heartbeats)
+    try:
+        # Keep errors/warnings from these libs; drop debug noise
+        for noisy in ("pymongo", "urllib3", "asyncio"):
+            logging.getLogger(noisy).setLevel(logging.WARNING)
+
+        # Additionally filter specific heartbeat spam if any handler still captures DEBUG
+        class _SuppressHeartbeat(logging.Filter):
+            def filter(self, record: logging.LogRecord) -> bool:  # type: ignore[override]
+                name = record.name or ""
+                if name.startswith("pymongo.topology"):
+                    msg = record.getMessage()
+                    if "Server heartbeat started" in msg or "Server heartbeat succeeded" in msg:
+                        return False
+                return True
+
+        hb_filter = _SuppressHeartbeat()
+        logging.getLogger("pymongo").addFilter(hb_filter)
+        logging.getLogger("pymongo.topology").addFilter(hb_filter)
+    except Exception:
+        pass
 
     # === CORS ===
     origins = _compute_cors_origins(app.config, os.environ.get("ALLOWED_ORIGINS", ""))
@@ -166,5 +188,8 @@ app = create_app()
 if __name__ == "__main__":
     host = os.environ.get("FLASK_HOST", "0.0.0.0")
     port = int(os.environ.get("FLASK_PORT", "5050"))
-    debug_flag = str(os.environ.get("FLASK_DEBUG", "1")).lower() in ("1", "true")
-    app.run(debug=debug_flag, host=host, port=port, use_reloader=debug_flag)
+    # Default debug to off to avoid reloader double-import warnings under -m
+    debug_flag = str(os.environ.get("FLASK_DEBUG", os.environ.get("DEBUG", "0"))).lower() in ("1", "true", "yes")
+    # When running as a module (python -m backend.app), disable the reloader to prevent duplicate import/execution
+    use_reloader = False
+    app.run(debug=debug_flag, host=host, port=port, use_reloader=use_reloader)

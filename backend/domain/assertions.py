@@ -154,6 +154,7 @@ def update_assertion(
         "action": "modify" if changed else "accept",
         "related_to": original.get("assertion_id"),
         "creator": updater,
+        "reviewer": updater,
 
         "pmid": pmid,
         "sentence_idx": sentence_idx,
@@ -199,6 +200,7 @@ def reject_assertion(
         "action": "reject",
         "related_to": original.get("assertion_id"),
         "reviewer": reviewer,
+        "creator": reviewer,
 
         "pmid": pmid,
         "sentence_idx": sentence_idx,
@@ -243,6 +245,7 @@ def uncertain_assertion(
         "action": "uncertain",
         "related_to": original.get("assertion_id"),
         "reviewer": reviewer,
+        "creator": reviewer,
 
         "pmid": pmid,
         "sentence_idx": sentence_idx,

@@ -218,8 +218,7 @@ function ConfirmModalImpl(
                 aria-busy={isLoading ? "true" : "false"}
             >
                 <span
-                    tabIndex={0}
-                    aria-hidden="true"
+                    tabIndex={-1}
                     className="absolute top-0 left-0 w-px h-px opacity-0"
                 />
                 <div className="absolute top-3 right-3">
@@ -283,8 +282,7 @@ function ConfirmModalImpl(
                     </div>
                 </div>
                 <span
-                    tabIndex={0}
-                    aria-hidden="true"
+                    tabIndex={-1}
                     className="absolute bottom-0 left-0 w-px h-px opacity-0"
                 />
             </div>

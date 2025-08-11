@@ -122,7 +122,7 @@ function InputImpl(
                     aria-busy={loading || undefined}
                     disabled={disabled || loading}
                     className={inputCls}
-                    value={value}
+                    value={value ?? ""}
                     {...props}
                 />
 
@@ -198,8 +198,10 @@ function InputImpl(
     );
 }
 
+const Input = forwardRef(InputImpl);
+
 if (process.env.NODE_ENV !== "production") {
-    InputImpl.propTypes = {
+    Input.propTypes = {
         variant: PropTypes.oneOf(["default", "error", "success"]),
         size: PropTypes.oneOf(["sm", "md", "lg"]),
         startAdornment: PropTypes.node,
@@ -219,5 +221,4 @@ if (process.env.NODE_ENV !== "production") {
     };
 }
 
-const Input = forwardRef(InputImpl);
 export default Input;

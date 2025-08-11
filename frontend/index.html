@@ -14,7 +14,7 @@
   <meta name="color-scheme" content="light dark" />
   <meta name="theme-color" content="#f0f6ff" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#0f1f44" media="(prefers-color-scheme: dark)" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="format-detection" content="telephone=no" />
 
@@ -37,7 +37,8 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-  <link rel="manifest" href="/manifest.webmanifest" />
+  <!-- Optional: remove manifest link to avoid console parse warning if unavailable -->
+  <!-- <link rel="manifest" href="/manifest.webmanifest" /> -->
 
   <!-- Performance / Font loading -->
   <link rel="preconnect" href="https://fonts.googleapis.com" crossorigin />
@@ -74,14 +75,16 @@
     }
   </style>
 
-  <!-- Theme bootstrap: set data-theme before paint to avoid flash -->
+  <!-- Theme bootstrap: set data-theme and .dark before paint to avoid flash; follows system when set to "system" -->
   <script>
     (function () {
       try {
-        const stored = localStorage.getItem("theme");
+        const stored = localStorage.getItem("theme-preference") || "system";
         const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-        const theme = stored || (prefersDark ? "dark" : "light");
-        document.documentElement.setAttribute("data-theme", theme);
+        const theme = stored === "system" ? (prefersDark ? "dark" : "light") : stored;
+        var root = document.documentElement;
+        root.setAttribute("data-theme", theme);
+        if (theme === "dark") root.classList.add("dark"); else root.classList.remove("dark");
       } catch { }
     })();
   </script>

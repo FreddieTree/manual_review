@@ -7,12 +7,10 @@ function CardImpl({ children, className = "", as: Component = "div", ...rest }, 
     <Component
       ref={ref}
       className={clsx(
-        // Apple-style glass/surface card
-        "bg-white/90 dark:bg-slate-900/60 backdrop-blur-sm",
-        "rounded-2xl border border-gray-100 dark:border-slate-800",
-        "shadow-xl",
-        "p-6",
-        className
+        // Apple-style glass/surface card (allow overrides to fully replace bg when provided)
+        "backdrop-blur-sm rounded-2xl border shadow-xl p-6",
+        "border-gray-100 dark:border-slate-800",
+        className || "bg-white dark:bg-slate-900"
       )}
       {...rest}
     >

@@ -186,8 +186,10 @@ function TooltipImpl(
     );
 }
 
+const Tooltip = forwardRef(TooltipImpl);
+
 if (process.env.NODE_ENV !== "production") {
-    TooltipImpl.propTypes = {
+    Tooltip.propTypes = {
         label: PropTypes.node.isRequired,
         children: PropTypes.node.isRequired,
         placement: PropTypes.oneOf(["top", "bottom", "left", "right"]),
@@ -197,6 +199,4 @@ if (process.env.NODE_ENV !== "production") {
         maxWidth: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
     };
 }
-
-const Tooltip = forwardRef(TooltipImpl);
 export default Tooltip;
