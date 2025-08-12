@@ -612,9 +612,9 @@ function ReviewPageImpl(_, ref) {
               })}
             </div>
 
-            {/* Right: sticky summary panel aligned with sentence headers */}
+            {/* Right: sticky summary panel with its own vertical scroll */}
             <div className="self-start sticky top-8">
-              <Card className="w-full">
+              <Card className="w-full max-h-[calc(100vh-6rem)] overflow-y-auto pr-1">
                 <div className="flex flex-col gap-4">
                   <Section title="Summary">
                     <SummaryPanel

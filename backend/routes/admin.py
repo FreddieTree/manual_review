@@ -97,15 +97,24 @@ def admin_export_snapshot():
         from flask import send_file, request
         from io import BytesIO
         import json
-        from backend.services.aggregation import get_all_pmids, aggregate_final_decisions_for_pmid
+        from backend.services.aggregation import (
+            get_all_pmids,
+            aggregate_final_decisions_for_pmid,
+            _pmids_from_logs as _agg_pmids_from_logs,  # fallback to logs when DB is unavailable
+            _load_raw_logs as _agg_load_raw_logs,
+        )
         download = str(request.args.get("download", "0")).lower() in ("1", "true", "yes")
         if download:
             # Build using same consensus computation as export_consensus
             finals = []
+            # Prefer DB PMIDs but gracefully fall back to PMIDs parsed from logs
             try:
                 pmids = list(get_all_pmids())
             except Exception:
-                pmids = []
+                try:
+                    pmids = _agg_pmids_from_logs(_agg_load_raw_logs())
+                except Exception:
+                    pmids = []
             for pid in pmids:
                 try:
                     finals.extend(aggregate_final_decisions_for_pmid(pid))

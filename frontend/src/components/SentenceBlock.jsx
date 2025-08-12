@@ -8,6 +8,7 @@ import Button from "./ui/Button";
 import Input from "./ui/Input";
 import Select from "./ui/Select";
 import Badge from "./ui/Badge";
+import Card from "./ui/Card";
 
 import {
   isPerfectMatch,
@@ -66,21 +67,26 @@ function SentenceBlockImpl(
   const getId = (type, i) => `sentence-${sentenceIndex}-assertion-${i}-${type}`;
 
   return (
-    <div
+    <Card
       ref={ref}
-      className="relative bg-white dark:bg-[#1f2937] rounded-3xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 flex flex-col gap-6"
+      className="relative bg-white/90 dark:bg-slate-900/70 backdrop-glass rounded-3xl ring-1 ring-black/5 dark:ring-white/5 flex flex-col gap-6"
     >
+      {/* Accent bar */}
+      <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-1.5 rounded-l-3xl bg-gradient-to-b from-indigo-400/70 to-blue-500/70" />
       {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start gap-4">
-        <div className="flex gap-4 flex-1 flex-wrap">
-          <div className="flex-shrink-0">
-            <Badge variant="subtle" color="gray" className="uppercase text-xs">
+        {/* Bubble container */}
+        <div className="flex-1">
+          <div className="rounded-2xl border border-gray-200/70 dark:border-gray-700/60 bg-white/90 dark:bg-slate-900/70 shadow-sm px-4 py-3 flex items-start gap-3">
+            {/* Circular S index */}
+            <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gray-100 dark:bg-slate-800 text-gray-800 dark:text-gray-100 border border-gray-200 dark:border-gray-700 shadow-sm flex items-center justify-center font-semibold select-none">
               S{sentenceIndex}
-            </Badge>
+            </div>
+            {/* Sentence text */}
+            <p className="flex-1 text-[15px] sm:text-base text-gray-800 dark:text-gray-100 leading-relaxed break-words">
+              {sentence}
+            </p>
           </div>
-          <p className="flex-1 text-base text-gray-800 dark:text-gray-100 leading-relaxed break-words">
-            {sentence}
-          </p>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
           <div className="text-xs text-gray-500 dark:text-gray-400 mr-1">Sentence decision:</div>
@@ -91,7 +97,7 @@ function SentenceBlockImpl(
       {/* Assertions list */}
       <div className="flex flex-col gap-5">
         {assertions.length === 0 && (
-          <div className="text-sm text-gray-600 dark:text-gray-300 italic px-4 py-3 bg-gray-50 dark:bg-[#111f33] rounded-lg border border-dashed border-gray-200 dark:border-gray-600">
+          <div className="text-sm text-gray-600 dark:text-gray-300 italic px-4 py-3 bg-gray-50/80 dark:bg-slate-800/70 rounded-2xl border border-dashed border-gray-200 dark:border-gray-600">
             No existing assertions. You can add one below.
           </div>
         )}
@@ -106,21 +112,21 @@ function SentenceBlockImpl(
           return (
             <div
               key={i}
-              className="flex flex-col lg:flex-row gap-6 p-4 bg-gray-50 dark:bg-[#111f33] rounded-xl border border-gray-200 dark:border-gray-600"
+              className="flex flex-col lg:flex-row gap-6 p-4 bg-gradient-to-b from-gray-50 to-white dark:from-slate-800 dark:to-slate-900/60 rounded-2xl border border-gray-200/70 dark:border-gray-600/60 shadow-sm hover:shadow-md transition-shadow"
               aria-label={`Assertion ${i + 1}`}
             >
               {/* Left: assertion content */}
               <div className="flex-1 grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr] gap-4">
                 {/* Subject */}
-                <div className="flex flex-col">
+                <div className="flex flex-col rounded-xl overflow-hidden">
                   <div className="flex items-start gap-2 mb-1 flex-wrap">
                     <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">Subject</div>
-                    <div
-                      className={clsx(
-                        "px-2 py-1 rounded-full text-sm font-medium truncate",
-                        subjectMatch ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
-                      )}
-                    >
+                     <div
+                       className={clsx(
+                         "px-2 py-1 rounded-full text-sm font-medium truncate shadow-sm",
+                         subjectMatch ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
+                       )}
+                     >
                       {a.subject || "—"}
                     </div>
                     <div
@@ -155,15 +161,15 @@ function SentenceBlockImpl(
                 </div>
 
                 {/* Predicate */}
-                <div className="flex flex-col">
+                <div className="flex flex-col rounded-xl overflow-hidden">
                   <div className="flex items-center gap-2 mb-1">
                     <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">Predicate</div>
-                    <div
-                      className={clsx(
-                        "px-2 py-1 rounded-full text-sm font-medium truncate",
-                        predicateValid ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
-                      )}
-                    >
+                     <div
+                       className={clsx(
+                         "px-2 py-1 rounded-full text-sm font-medium truncate shadow-sm",
+                         predicateValid ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
+                       )}
+                     >
                       {a.negation ? `neg_${a.predicate}` : a.predicate || "—"}
                     </div>
                   </div>
@@ -173,15 +179,15 @@ function SentenceBlockImpl(
                 </div>
 
                 {/* Object */}
-                <div className="flex flex-col">
+                <div className="flex flex-col rounded-xl overflow-hidden">
                   <div className="flex items-start gap-2 mb-1 flex-wrap">
                     <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">Object</div>
-                    <div
-                      className={clsx(
-                        "px-2 py-1 rounded-full text-sm font-medium truncate",
-                        objectMatch ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
-                      )}
-                    >
+                     <div
+                       className={clsx(
+                         "px-2 py-1 rounded-full text-sm font-medium truncate shadow-sm",
+                         objectMatch ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-600"
+                       )}
+                     >
                       {a.object || "—"}
                     </div>
                     <div
@@ -270,7 +276,7 @@ function SentenceBlockImpl(
       </div>
 
       {/* Add new assertion */}
-      <div className="pt-4 border-t border-dashed border-gray-200 dark:border-gray-600">
+      <div className="pt-4 border-t border-gray-100 dark:border-slate-800">
         <div className="flex items-center justify-between mb-3">
           <div className="text-sm font-semibold text-gray-700 dark:text-gray-100">Add / Suggest New Assertion</div>
         </div>
@@ -281,10 +287,10 @@ function SentenceBlockImpl(
             onAddAssertion?.(sentenceIndex, newAssertion);
           }}
           submitLabel="Add Assertion"
-          className="bg-white dark:bg-[#1f2937] rounded-2xl"
+          className="bg-white/90 dark:bg-slate-900/70 rounded-2xl backdrop-glass"
         />
       </div>
-    </div>
+    </Card>
   );
 }
 
