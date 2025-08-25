@@ -17,12 +17,8 @@ services:
       - key: SESSION_COOKIE_SECURE
         value: "true"
       - key: SESSION_COOKIE_SAMESITE
-        value: None
+        value: "None"
       - key: ALLOWED_ORIGINS
         value: https://YOUR_VERCEL_DOMAIN
       - key: MANUAL_REVIEW_DATA_DIR
-        value: /data
-    disk:
-      name: data
-      mountPath: /data
-      sizeGB: 1
+        value: /var/tmp/manual_review
