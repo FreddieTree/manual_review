@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: manual-review-backend
+    runtime: python
+    rootDir: backend
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn -w 2 -k gthread -b 0.0.0.0:$PORT backend.wsgi:app
+    healthCheckPath: /api/meta/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: MANUAL_REVIEW_SECRET_KEY
+        generateValue: true
+      - key: SESSION_COOKIE_SECURE
+        value: "true"
+      - key: SESSION_COOKIE_SAMESITE
+        value: None
+      - key: ALLOWED_ORIGINS
+        value: https://YOUR_VERCEL_DOMAIN
+      - key: MANUAL_REVIEW_DATA_DIR
+        value: /data
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
