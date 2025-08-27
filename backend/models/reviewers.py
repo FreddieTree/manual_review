@@ -14,12 +14,17 @@ logger = get_logger("models.reviewers")
 
 _LOCK = threading.RLock()
 
+# Try Mongo-backed storage; fall back to file when Mongo is unavailable
+try:
+    from ..models.db import reviewers_col  # type: ignore
+except Exception:  # pragma: no cover
+    reviewers_col = None  # type: ignore
+
 # ---------------------------------------------------------------------------
-# Path helpers (dynamic read to adapt to test fixtures/runtime temp dirs)
+# Path helpers (file fallback)
 # ---------------------------------------------------------------------------
 
 def _file_path() -> Path:
-    """Prefer MANUAL_REVIEW_REVIEWERS_JSON; otherwise fallback to config.REVIEWERS_JSON."""
     env = os.environ.get("MANUAL_REVIEW_REVIEWERS_JSON")
     return Path(env) if env else Path(REVIEWERS_JSON)
 
@@ -51,13 +56,10 @@ def _normalize_record(r: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 # ---------------------------------------------------------------------------
-# IO helpers
+# File IO helpers
 # ---------------------------------------------------------------------------
 
-def _load_raw() -> List[Dict[str, Any]]:
-    """Read reviewers list. Create empty file if missing.
-    Return empty list on bad structure/lines and log the error.
-    """
+def _load_raw_file() -> List[Dict[str, Any]]:
     p = _ensure_file()
     try:
         text = p.read_text(encoding="utf-8")
@@ -67,8 +69,7 @@ def _load_raw() -> List[Dict[str, Any]]:
         logger.exception("Failed to read reviewers file: %s", str(p))
         return []
 
-def _atomic_write(data: List[Dict[str, Any]]) -> None:
-    """Atomic write using same-dir temp file -> flush+fsync -> os.replace."""
+def _atomic_write_file(data: List[Dict[str, Any]]) -> None:
     p = _ensure_file()
     tmp_fd, tmp_path = tempfile.mkstemp(prefix="reviewers.", suffix=".tmp", dir=str(p.parent))
     os.close(tmp_fd)
@@ -89,25 +90,49 @@ def _atomic_write(data: List[Dict[str, Any]]) -> None:
             pass
 
 # ---------------------------------------------------------------------------
+# Mongo helpers
+# ---------------------------------------------------------------------------
+
+def _load_raw_db() -> List[Dict[str, Any]]:
+    if reviewers_col is None:
+        return _load_raw_file()
+    try:
+        return list(reviewers_col.find({}, {"_id": 0}))
+    except Exception:
+        return _load_raw_file()
+
+def _write_db(items: List[Dict[str, Any]]) -> None:
+    if reviewers_col is None:
+        _atomic_write_file(items)
+        return
+    try:
+        # Replace all (small list), using upserts on email to preserve unique index
+        for r in items:
+            norm = _normalize_record(r)
+            if not norm["email"]:
+                continue
+            reviewers_col.update_one({"email": norm["email"]}, {"$set": norm}, upsert=True)
+    except Exception:
+        # Fallback to file on failure
+        _atomic_write_file(items)
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 def load_reviewers() -> List[Dict[str, Any]]:
-    """Return normalized reviewers list."""
     with _LOCK:
-        raw = _load_raw()
+        raw = _load_raw_db()
         out = [_normalize_record(r) for r in raw if isinstance(r, dict)]
         return out
 
 def save_reviewers(reviewers: List[Dict[str, Any]]) -> None:
-    """Overwrite reviewers file (normalizes the input first)."""
     with _LOCK:
-        _atomic_write([_normalize_record(r) for r in reviewers if isinstance(r, dict)])
+        _write_db([_normalize_record(r) for r in reviewers if isinstance(r, dict)])
 
 def get_all_reviewers() -> List[Dict[str, Any]]:
-    """Return deduplicated reviewers (keyed by email; last write wins), sorted by email."""
     with _LOCK:
-        data = _load_raw()
+        data = _load_raw_db()
         dedup: Dict[str, Dict[str, Any]] = {}
         for r in data:
             if not isinstance(r, dict):
@@ -124,8 +149,14 @@ def get_reviewer_by_email(email: str) -> Optional[Dict[str, Any]]:
     email_n = _normalize_email(email)
     if not email_n:
         return None
+    if reviewers_col is not None:
+        try:
+            doc = reviewers_col.find_one({"email": email_n}, {"_id": 0})
+            return _normalize_record(doc) if doc else None
+        except Exception:
+            pass
     with _LOCK:
-        for r in _load_raw():
+        for r in _load_raw_file():
             if not isinstance(r, dict):
                 continue
             if _normalize_email(r.get("email")) == email_n:
@@ -145,16 +176,21 @@ def add_reviewer(
     rec = _normalize_record({
         "email": email_n, "name": name, "active": active, "role": role, "note": note
     })
+    if reviewers_col is not None:
+        try:
+            reviewers_col.update_one({"email": email_n}, {"$set": rec}, upsert=True)
+            return
+        except Exception:
+            pass
     with _LOCK:
-        data = _load_raw()
-        # 冲突检查
+        data = _load_raw_file()
         for r in data:
             if not isinstance(r, dict):
                 continue
             if _normalize_email(r.get("email")) == email_n:
                 raise ValueError("reviewer already exists")
         data.append(rec)
-        _atomic_write(data)
+        _atomic_write_file(data)
 
 def update_reviewer(email: str, fields: Dict[str, Any]) -> None:
     email_n = _normalize_email(email)
@@ -162,8 +198,28 @@ def update_reviewer(email: str, fields: Dict[str, Any]) -> None:
         raise ValueError("invalid email")
 
     allowed = {"name", "active", "role", "note"}
+    if reviewers_col is not None:
+        to_set: Dict[str, Any] = {}
+        for k, v in fields.items():
+            if k not in allowed:
+                continue
+            if k == "role":
+                to_set[k] = _normalize_role(v)
+            elif k == "active":
+                to_set[k] = bool(v)
+            elif k == "name":
+                to_set[k] = (v or "").strip()
+            else:
+                to_set[k] = str(v if v is not None else "")
+        if to_set:
+            try:
+                reviewers_col.update_one({"email": email_n}, {"$set": to_set}, upsert=False)
+                return
+            except Exception:
+                pass
+
     with _LOCK:
-        data = _load_raw()
+        data = _load_raw_file()
         found = False
         for r in data:
             if not isinstance(r, dict):
@@ -184,14 +240,20 @@ def update_reviewer(email: str, fields: Dict[str, Any]) -> None:
                 break
         if not found:
             raise ValueError("reviewer not found")
-        _atomic_write(data)
+        _atomic_write_file(data)
 
 def delete_reviewer(email: str) -> None:
     email_n = _normalize_email(email)
     if not email_n:
         return
+    if reviewers_col is not None:
+        try:
+            reviewers_col.delete_one({"email": email_n})
+            return
+        except Exception:
+            pass
     with _LOCK:
-        data = _load_raw()
+        data = _load_raw_file()
         new_data = []
         removed = False
         for r in data:
@@ -202,4 +264,4 @@ def delete_reviewer(email: str) -> None:
                 continue
             new_data.append(r)
         if removed:
-            _atomic_write(new_data)
+            _atomic_write_file(new_data)

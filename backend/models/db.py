@@ -32,10 +32,15 @@ def ensure_indexes() -> None:
     """Create required MongoDB indexes if missing.
 
     - abstracts.pmid unique
+    - reviewers.email unique
     - locks.expire_at TTL index (if locks collection exists)
     """
     try:
         abstracts_col.create_index("pmid", unique=True, name="pmid_unique")
+    except PyMongoError:
+        pass
+    try:
+        reviewers_col.create_index("email", unique=True, name="reviewers_email_unique")
     except PyMongoError:
         pass
     try:

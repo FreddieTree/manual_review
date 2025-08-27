@@ -81,23 +81,38 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
 
     # 3) Activity metrics from logs (optionally reviewer-scoped)
     all_logs = load_logs()
+
+    def _who(log: dict) -> str:
+        return _safe_lower(log.get("creator") or log.get("reviewer") or log.get("email"))
+
+    def _pmid_of(log: dict) -> str:
+        # Support alternate historical keys besides 'pmid'
+        raw = log.get("pmid") or log.get("abstract_id") or log.get("abs_id")
+        try:
+            return str(raw).strip()
+        except Exception:
+            return ""
+
     logs = list(all_logs)
     if reviewer_email:
         email_lc = _safe_lower(reviewer_email)
-        logs = [l for l in all_logs if _safe_lower(l.get("creator") or l.get("reviewer") or l.get("email")) == email_lc]
+        logs = [l for l in all_logs if _who(l) == email_lc]
 
     actions_counter: Dict[str, int] = {}
     pmids_touched: set[str] = set()
     sentence_keys: set[tuple[str, int]] = set()
     last_ts = 0.0
-    for l in logs:
+    for l in (logs if reviewer_email else all_logs):
+        # For global metrics use all logs; for reviewer-scoped, use filtered logs
         act = _safe_lower(l.get("action"))
         actions_counter[act] = actions_counter.get(act, 0) + 1
-        pid = str(l.get("pmid") or "").strip()
+        pid = _pmid_of(l)
         if pid:
             pmids_touched.add(pid)
         try:
-            si = int(l.get("sentence_index")) if l.get("sentence_index") is not None else None
+            si = int(l.get("sentence_index")) if l.get("sentence_index") is not None else l.get("sentence_idx")
+            if si is not None:
+                si = int(si)
             if pid and si is not None:
                 sentence_keys.add((pid, si))
         except Exception:
@@ -121,15 +136,6 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
     if reviewer_email:
         email_lc = _safe_lower(reviewer_email)
 
-        def _who(log: dict) -> str:
-            return _safe_lower(log.get("creator") or log.get("reviewer") or log.get("email"))
-
-        def _ts_get(log: dict) -> float:
-            try:
-                return float(log.get("created_at") or log.get("timestamp") or 0)
-            except Exception:
-                return 0.0
-
         def _decision_counts(subset: list[dict]) -> dict:
             out = {"accept": 0, "modify": 0, "reject": 0, "uncertain": 0}
             for lg in subset:
@@ -145,17 +151,20 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
         except Exception:
             _name_by_email = {}
 
-        # PMIDs that this reviewer touched
-        pmids = sorted({str(l.get("pmid")) for l in logs if l.get("pmid")}, key=lambda x: x)
+        # PMIDs that this reviewer touched (support multiple log field variants)
+        pmids_for_reviewer = sorted({ _pmid_of(l) for l in logs if _pmid_of(l) }, key=lambda x: x)
         table: list[dict] = []
-        for pid in pmids:
-            # all logs for this pmid from everyone
-            all_for_pid = [l for l in all_logs if str(l.get("pmid")) == pid]
+        for pid in pmids_for_reviewer:
+            # all logs for this pmid from everyone (for determining reviewer order)
+            all_for_pid = [l for l in all_logs if _pmid_of(l) == pid]
             # earliest touch per reviewer
             first_touch_by_reviewer: dict[str, float] = {}
             for lg in all_for_pid:
                 who = _who(lg)
-                ts = _ts_get(lg)
+                try:
+                    ts = float(lg.get("created_at") or lg.get("timestamp") or 0)
+                except Exception:
+                    ts = 0.0
                 if who and (who not in first_touch_by_reviewer or ts < first_touch_by_reviewer[who]):
                     first_touch_by_reviewer[who] = ts
             reviewer_order_list = sorted(first_touch_by_reviewer.items(), key=lambda kv: kv[1])
@@ -163,7 +172,7 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
             second_email = reviewer_order_list[1][0] if len(reviewer_order_list) > 1 else None
             order_num = 1 if email_lc == first_email else 2 if email_lc == second_email else None
 
-            # counts per reviewer
+            # counts per reviewer restricted to this pmid
             sel_logs = [l for l in all_for_pid if _who(l) == email_lc]
             first_logs = [l for l in all_for_pid if _who(l) == (first_email or "")]
             second_logs = [l for l in all_for_pid if _who(l) == (second_email or "")]
@@ -180,7 +189,7 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
                 "selected_decisions": _decision_counts(sel_logs),
                 "first_reviewer_decisions": _decision_counts(first_logs) if first_email else None,
                 "second_reviewer_decisions": _decision_counts(second_logs) if second_email else None,
-                "last_activity": max([_ts_get(l) for l in sel_logs] or [0]) or None,
+                "last_activity": max([float(l.get("created_at") or l.get("timestamp") or 0) for l in sel_logs] or [0]) or None,
             })
 
         # Sort by last activity desc then pmid
