@@ -50,6 +50,7 @@ _MAX_CONCURRENT_REVIEWERS: int = (
 
 def _now() -> float:
     return time.time()
+
 def get_current_pmid_for_reviewer(email: str) -> Optional[str]:
     """Return pmid currently locked by reviewer, if any; also refresh heartbeat."""
     email = (email or "").strip().lower()
@@ -111,6 +112,25 @@ def _cleanup_expired_locked(current_time: Optional[float] = None) -> None:
     for pmid in expired_pmids:
         logger.debug("Clearing empty lock record for abstract %s", pmid)
         _LOCKS.pop(pmid, None)
+
+# Cross-process: read db-backed lock if available
+_def_now = _now
+
+def _db_lock_is_held_by_others(pmid: str, email: str, now: Optional[float] = None) -> bool:
+    if db is None:
+        return False
+    try:
+        now_ts = now if now is not None else _def_now()
+        doc = db["locks"].find_one({"pmid": pmid})
+        if not doc:
+            return False
+        expire_at = float(doc.get("expire_at") or 0)
+        if expire_at <= now_ts:
+            return False
+        reviewers = list(doc.get("reviewers") or [])
+        return (email not in reviewers)
+    except Exception:
+        return False
 
 # -----------------------------------------------------------------------------
 # Public API
@@ -195,44 +215,58 @@ def assign_abstract_to_reviewer(
                 logger.debug("Reviewer %s already holds lock on %s; returning existing", email, pmid_existing)
                 return pmid_existing
 
+        # Build historical mapping of reviewers per pmid (to avoid re-assigning same reviewer to same abstract ever)
+        hist_reviewers_by_pmid: Dict[str, set] = {}
+        try:
+            raw_logs = load_logs()
+            for log in raw_logs:
+                pid = str((log.get("pmid") or log.get("abstract_id") or log.get("abs_id") or "")).strip()
+                if not pid:
+                    continue
+                actor = ((log.get("creator") or log.get("reviewer") or log.get("email") or "")).strip().lower()
+                if not actor:
+                    continue
+                s = hist_reviewers_by_pmid.setdefault(pid, set())
+                s.add(actor)
+        except Exception:
+            hist_reviewers_by_pmid = {}
+
         # 1) Prefer current if provided
         if prefer_current:
             pmid_cur = str(prefer_current)
-            lock = _LOCKS.get(pmid_cur)
-            if lock:
-                reviewers: Dict[str, float] = lock.setdefault("reviewers", {})
-                history: List[Dict[str, Any]] = lock.setdefault("history", [])
-                if email in reviewers:
-                    reviewers[email] = now
-                    logger.debug("Refreshed (prefer_current) for %s on %s", email, pmid_cur)
-                    return pmid_cur
-                if len(reviewers) < _MAX_CONCURRENT_REVIEWERS:
-                    reviewers[email] = now
-                    history.append({"email": email, "assigned_at": now, "released_at": None})
-                    logger.info("Added reviewer %s to existing lock (prefer_current) on %s", email, pmid_cur)
-                    return pmid_cur
-            # no lock -> fall through
+            # If reviewer has historically worked on this pmid but is not currently holding it, do NOT reassign
+            if email in hist_reviewers_by_pmid.get(pmid_cur, set()) and pmid_cur not in _LOCKS:
+                logger.info("Skip prefer_current %s for %s due to historical assignment", pmid_cur, email)
+            else:
+                lock = _LOCKS.get(pmid_cur)
+                if lock:
+                    reviewers: Dict[str, float] = lock.setdefault("reviewers", {})
+                    history: List[Dict[str, Any]] = lock.setdefault("history", [])
+                    if email in reviewers:
+                        reviewers[email] = now
+                        logger.debug("Refreshed (prefer_current) for %s on %s", email, pmid_cur)
+                        return pmid_cur
+                    if len(reviewers) < _MAX_CONCURRENT_REVIEWERS and not _db_lock_is_held_by_others(pmid_cur, email, now):
+                        reviewers[email] = now
+                        history.append({"email": email, "assigned_at": now, "released_at": None})
+                        logger.info("Added reviewer %s to existing lock (prefer_current) on %s", email, pmid_cur)
+                        return pmid_cur
+                else:
+                    # no in-process lock; check cross-process lock
+                    if not _db_lock_is_held_by_others(pmid_cur, email, now):
+                        # allow creating a new lock only if not historically reviewed by this email
+                        if email not in hist_reviewers_by_pmid.get(pmid_cur, set()):
+                            _LOCKS[pmid_cur] = {
+                                "reviewers": {email: now},
+                                "assigned_at": now,
+                                "history": [{"email": email, "assigned_at": now, "released_at": None}],
+                            }
+                            logger.info("Assigned (prefer_current) abstract %s to reviewer %s (new)", pmid_cur, email)
+                            return pmid_cur
+            # fall through
 
-        # 2) Build candidate pools according to allocation rules, considering historical reviewers (max 2 total)
-        # Compute historical distinct reviewers per pmid from logs (append-only model)
-        hist_counts: Dict[str, int] = {}
-        try:
-            raw_logs = load_logs()
-            tmp: Dict[str, set] = {}
-            for log in raw_logs:
-                pid = str(log.get("pmid") or "").strip()
-                if not pid:
-                    continue
-                actor = ((log.get("creator") or log.get("reviewer") or "").strip().lower())
-                if not actor:
-                    continue
-                s = tmp.setdefault(pid, set())
-                s.add(actor)
-            hist_counts = {k: len(v) for k, v in tmp.items()}
-        except Exception:
-            hist_counts = {}
-
-        singles: List[str] = []  # abstracts with exactly 1 reviewer (not including this email) and capacity
+        # 2) Build candidate pools according to allocation rules
+        singles: List[str] = []  # abstracts with exactly 1 historical reviewer (not including this email) and capacity
         empties: List[str] = []  # no lock yet
         partials: List[str] = [] # has reviewers but capacity available (not including this email)
 
@@ -240,13 +274,18 @@ def assign_abstract_to_reviewer(
             pmid = str(abstract.get("pmid") or "")
             if not pmid:
                 continue
-            # Skip pmids that already reached 2 historical reviewers (soft limit; a fallback below may relax this)
-            if hist_counts.get(pmid, 0) >= 2:
+            # Do not assign the same reviewer to the same abstract if they ever reviewed it before
+            if email in hist_reviewers_by_pmid.get(pmid, set()):
                 continue
+
+            # Respect cross-process locks when db is available
+            if _db_lock_is_held_by_others(pmid, email, now):
+                continue
+
             lock = _LOCKS.get(pmid)
             if not lock:
-                # Distinguish based on historical count for prioritization
-                if hist_counts.get(pmid, 0) == 1:
+                # Prioritize pmids that already have exactly one historical reviewer (and it's not this email because of filter above)
+                if len(hist_reviewers_by_pmid.get(pmid, set())) == 1:
                     singles.append(pmid)
                 else:
                     empties.append(pmid)
@@ -258,9 +297,8 @@ def assign_abstract_to_reviewer(
                 logger.debug("Refreshed lock for reviewer %s on abstract %s", email, pmid)
                 return pmid
             if len(reviewers) < _MAX_CONCURRENT_REVIEWERS:
-                # Only available if not locked or capacity available; with exclusive lock, this is typically 0
-                # Prioritize pmids with exactly one historical reviewer
-                if hist_counts.get(pmid, 0) == 1:
+                # Only available if not locked or capacity available
+                if len(hist_reviewers_by_pmid.get(pmid, set())) == 1:
                     singles.append(pmid)
                 else:
                     partials.append(pmid)
@@ -279,6 +317,9 @@ def assign_abstract_to_reviewer(
         random.shuffle(selection_order)
 
         for pmid in selection_order:
+            # Respect cross-process lock before taking
+            if _db_lock_is_held_by_others(pmid, email, now):
+                continue
             lock = _LOCKS.get(pmid)
             if not lock:
                 _LOCKS[pmid] = {
@@ -300,12 +341,14 @@ def assign_abstract_to_reviewer(
                 logger.info("Added reviewer %s to existing lock on abstract %s", email, pmid)
                 return pmid
 
-        # Fallback: if nothing matched due to historical cap or transient lock state,
-        # relax the historical reviewer constraint and attempt a best-effort assignment.
-        # This ensures reviewers aren't stranded on login when data exists but is saturated.
+        # Fallback: still respect historical reviewer rule and db lock
         for abstract in load_abstracts():
             pmid = str(abstract.get("pmid") or "")
             if not pmid:
+                continue
+            if email in hist_reviewers_by_pmid.get(pmid, set()):
+                continue
+            if _db_lock_is_held_by_others(pmid, email, now):
                 continue
             lock = _LOCKS.get(pmid)
             if not lock:
@@ -314,7 +357,7 @@ def assign_abstract_to_reviewer(
                     "assigned_at": now,
                     "history": [{"email": email, "assigned_at": now, "released_at": None}],
                 }
-                logger.warning("Fallback assignment (relaxed cap): %s -> %s", email, pmid)
+                logger.warning("Fallback assignment (respects history): %s -> %s", email, pmid)
                 return pmid
             reviewers = lock.setdefault("reviewers", {})
             history = lock.setdefault("history", [])
