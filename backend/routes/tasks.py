@@ -233,6 +233,12 @@ def api_submit_review():
         except Exception:
             logger.debug("failed to write submit_review meta log")
 
+        # Immediately release the lock so this reviewer cannot be assigned the same abstract again
+        try:
+            release_assignment(email=email, pmid=str(pmid))
+        except Exception:
+            logger.debug("Failed to release assignment for %s on %s after submission", email, pmid)
+
         session.pop("current_abs_id", None)
         release_expired_locks()
 
@@ -292,3 +298,13 @@ def api_abstract_overview(pmid: str):
     except Exception:
         logger.exception("abstract_overview failed for %s", pmid)
         return error_response("Overview failed", status=500, error_code="overview_error")
+
+
+@task_api.route("/locks_snapshot", methods=["GET"])  # optional debug endpoint
+@require_admin
+def api_locks_snapshot():
+    try:
+        from ..services.assignment import get_current_locks_snapshot
+        return success_response(get_current_locks_snapshot())
+    except Exception as e:
+        return error_response(f"Failed to get locks snapshot: {e}", status=500)
