@@ -86,12 +86,20 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
         return _safe_lower(log.get("creator") or log.get("reviewer") or log.get("email"))
 
     def _pmid_of(log: dict) -> str:
-        # Support alternate historical keys besides 'pmid'
         raw = log.get("pmid") or log.get("abstract_id") or log.get("abs_id")
         try:
             return str(raw).strip()
         except Exception:
             return ""
+
+    def _is_valid_pmid(pid: str) -> bool:
+        if not pid:
+            return False
+        l = pid.strip().lower()
+        if l in ("none", "null", "nan"):
+            return False
+        # Most PMIDs are digits; accept digits-only to avoid garbage
+        return l.isdigit()
 
     logs = list(all_logs)
     if reviewer_email:
@@ -107,13 +115,13 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
         act = _safe_lower(l.get("action"))
         actions_counter[act] = actions_counter.get(act, 0) + 1
         pid = _pmid_of(l)
-        if pid:
+        if _is_valid_pmid(pid):
             pmids_touched.add(pid)
         try:
-            si = int(l.get("sentence_index")) if l.get("sentence_index") is not None else l.get("sentence_idx")
+            si = l.get("sentence_index") if l.get("sentence_index") is not None else l.get("sentence_idx")
             if si is not None:
                 si = int(si)
-            if pid and si is not None:
+            if _is_valid_pmid(pid) and si is not None:
                 sentence_keys.add((pid, si))
         except Exception:
             pass
@@ -151,8 +159,8 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
         except Exception:
             _name_by_email = {}
 
-        # PMIDs that this reviewer touched (support multiple log field variants)
-        pmids_for_reviewer = sorted({ _pmid_of(l) for l in logs if _pmid_of(l) }, key=lambda x: x)
+        # PMIDs that this reviewer touched (support multiple log field variants), filter invalids
+        pmids_for_reviewer = sorted({ p for p in (_pmid_of(l) for l in logs) if _is_valid_pmid(p) }, key=lambda x: x)
         table: list[dict] = []
         for pid in pmids_for_reviewer:
             # all logs for this pmid from everyone (for determining reviewer order)
