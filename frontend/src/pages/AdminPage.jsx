@@ -413,16 +413,16 @@ function AdminPageImpl(_, ref) {
                 ) : (
                   (() => {
                     const sc = analytics?.status_counts || {};
-                    const totalS = Object.values(sc).reduce((a, b) => a + (Number(b) || 0), 0) || 0;
-                    const pct = (n) => (totalS ? Math.round((Number(n) || 0) * 1000 / totalS) / 10 : 0);
-                    // Clarify statuses: arbitrated/consensus/conflict, pending (only one reviewer so far), and exclude vague 'uncertain'
+                    const sa = analytics?.status_abstract_counts || {};
                     const order = ["arbitrated", "consensus", "conflict", "pending"];
                     return (
                       <ul className="text-sm grid grid-cols-2 gap-1">
                         {order.map((k) => (
                           <li key={k} className="flex justify-between">
                             <span className="capitalize">{k}</span>
-                            <span className="font-semibold tabular-nums">{sc[k] ?? 0} <span className="text-gray-400">({pct(sc[k])}%)</span></span>
+                            <span className="font-semibold tabular-nums">
+                              {sc[k] ?? 0} <span className="text-gray-400">({sa[k] ?? 0} abstracts)</span>
+                            </span>
                           </li>
                         ))}
                       </ul>

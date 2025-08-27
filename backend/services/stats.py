@@ -62,6 +62,7 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
 
     # 2) Assertion consensus-status summary using aggregation per PMID
     status_counts = {"consensus": 0, "conflict": 0, "uncertain": 0, "pending": 0, "arbitrated": 0}
+    status_abstracts: Dict[str, set] = {k: set() for k in status_counts.keys()}
     try:
         from ..models.abstracts import get_all_pmids
         pmids: List[str] = list(get_all_pmids())
@@ -77,8 +78,10 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
                 st = item.get("consensus_status")
                 if st in status_counts:
                     status_counts[st] += 1
+                    status_abstracts[st].add(str(pid))
                 else:
                     status_counts["pending"] += 1
+                    status_abstracts["pending"].add(str(pid))
         except Exception:
             continue
 
@@ -214,6 +217,7 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
             "assertions": total_assertions,
         },
         "status_counts": status_counts,
+        "status_abstract_counts": {k: len(v) for k, v in status_abstracts.items()},
         "activity": activity,
         **({"per_abstract": per_abstract} if per_abstract is not None else {}),
     }
