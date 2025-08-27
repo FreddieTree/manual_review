@@ -24,10 +24,11 @@ function ArbitrationPageImpl(_, ref) {
         controllerRef.current = new AbortController();
 
         try {
-            const data = await client.get(
+            // Fetch conflicts only; include_pending=false per spec
+            const { data } = await client.get(
                 "arbitration/queue",
                 { signal: controllerRef.current.signal, params: { only_conflicts: true, include_pending: false } },
-                { unwrap: "data" }
+                { unwrap: "full" }
             );
             const items = Array.isArray(data?.items) ? data.items : [];
             const sum = data?.summary && typeof data.summary === 'object' ? data.summary : { total: items.length, conflicts: items.length, pending: 0 };

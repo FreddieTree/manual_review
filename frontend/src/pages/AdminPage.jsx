@@ -281,7 +281,7 @@ function AdminPageImpl(_, ref) {
                 >
                   <span className="text-xl">⚖️</span>
                   <span>Arbitration Queue</span>
-                  <span className="text-[10px] text-gray-500">{arbitrationCount} pending</span>
+                  <span className="text-[10px] text-gray-500">{arbitrationCount} conflicts</span>
                 </a>
                 <div className="inline-flex items-center gap-2">
                   <Button
