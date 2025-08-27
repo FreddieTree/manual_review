@@ -21,6 +21,7 @@ except Exception:
 from backend.services.import_service import start_import_job, get_import_progress
 from backend.models.logs import log_review_action
 from backend.services.stats import compute_platform_analytics
+from backend.services.aggregation import find_assertion_conflicts
 
 admin_api = Blueprint("admin_api", __name__, url_prefix="/api/admin")
 
@@ -72,15 +73,22 @@ def admin_stats():
     reviewed_count = 0
     reviewed_ratio = round((reviewed_count / total_abstracts) * 100, 1) if total_abstracts else 0.0
 
+    # Compute arbitration queue size (number of conflicted assertions)
+    try:
+        conflicts_list = find_assertion_conflicts()
+        arbitration_count = len(conflicts_list)
+    except Exception:
+        arbitration_count = 0
+
     payload = {
         "total_abstracts": total_abstracts,
         "total_reviewers": total_reviewers,
         "reviewed_count": reviewed_count,
         "reviewed_ratio": reviewed_ratio,
-        "conflicts": 0,
+        "conflicts": arbitration_count,
         "abstracts_today": 0,
         "new_reviewers": 0,
-        "arbitration_count": 0,
+        "arbitration_count": arbitration_count,
         "active_reviewers": 0,
         "last_export": None,
     }

@@ -14,6 +14,11 @@ from ..config import (
     REWARD_PER_ASSERTION_ADD,
     get_logger,
 )
+try:
+    # Prefer Mongo persistence when available
+    from ..models.db import logs_col  # type: ignore
+except Exception:  # pragma: no cover
+    logs_col = None  # type: ignore
 
 logger = get_logger("models.logs")
 
@@ -82,6 +87,7 @@ def log_review_action(record: Dict[str, Any], *, path: Optional[str | os.PathLik
     data = json.dumps(rec, ensure_ascii=False)
 
     with _WRITE_LOCK:
+        # Write to file (best-effort) for local dev
         try:
             with p.open("a", encoding="utf-8") as f:
                 f.write(data + "\n")
@@ -89,8 +95,14 @@ def log_review_action(record: Dict[str, Any], *, path: Optional[str | os.PathLik
                 if _USE_FSYNC:
                     os.fsync(f.fileno())
         except Exception:
-            logger.exception("Failed to append review log to %s", str(p))
-            raise
+            logger.debug("File log append failed; continuing with Mongo only")
+        # Write to Mongo (preferred for persistence)
+        if logs_col is not None:
+            try:
+                # Store original record; Mongo will handle ObjectId
+                logs_col.insert_one(rec)
+            except Exception:
+                logger.exception("Failed to append review log to Mongo")
 
     # 写入后主动失效聚合缓存
     try:
@@ -104,6 +116,25 @@ def log_review_action(record: Dict[str, Any], *, path: Optional[str | os.PathLik
 # ---------------------------------------------------------------------------
 
 def load_logs(*, path: Optional[str | os.PathLike] = None, limit: Optional[int] = None) -> List[Dict[str, Any]]:
+    """Load logs from Mongo when available; fallback to file on local dev.
+
+    - When limit is provided, returns the most recent N items sorted by created_at/ timestamp.
+    - Ensures consistent dict output.
+    """
+    # Prefer Mongo
+    if logs_col is not None:
+        try:
+            cursor = logs_col.find({}, {"_id": 0})
+            if limit and limit > 0:
+                cursor = logs_col.find({}, {"_id": 0}).sort([("created_at", 1), ("timestamp", 1)])  # ascending to keep order
+                docs = list(cursor)[-limit:]
+            else:
+                docs = list(cursor)
+            return [dict(d) for d in docs if isinstance(d, dict)]
+        except Exception:
+            logger.debug("Mongo load_logs failed; falling back to file")
+
+    # Fallback to file
     p = _to_path(path)
     if not p.exists():
         return []
