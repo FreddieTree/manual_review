@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional, Tuple, Iterable
 
 from ..config import REVIEW_LOGS_PATH, FINAL_EXPORT_PATH, get_logger
 from ..domain.assertions import make_assertion_id
-from ..models.abstracts import get_all_pmids
+from ..models.abstracts import get_all_pmids, get_abstract_by_id
 
 logger = get_logger("services.aggregation")
 
@@ -388,7 +388,7 @@ def aggregate_final_decisions_for_pmid(pmid: str) -> List[Dict[str, Any]]:
     for item in detailed:
         status = item.get("consensus_status")
         if status in (ConsensusResult.CONSENSUS.value, ConsensusResult.ARBITRATED.value):
-            final_log = item["logs"][-1] if item.get("logs") else {}
+            final_log = item["logs"][ -1 ] if item.get("logs") else {}
             record = {
                 **final_log,
                 "final_decision": status,
@@ -402,10 +402,73 @@ def aggregate_final_decisions_for_pmid(pmid: str) -> List[Dict[str, Any]]:
 
 # ---------- Export / Overview ------------------------------------------------
 
-def export_final_consensus(out_path: Optional[str | Path] = None) -> tuple[int, Path]:
-    """Export all PMIDs' final decisions to JSONL.
-    Returns (written_count, file_path).
+def build_export_abstract(pmid: str) -> Optional[Dict[str, Any]]:
+    """Build one export-ready abstract object matching the input JSONL shape.
+    - Use DB abstract as base (normalized to sentence_results)
+    - Keep only assertions with final consensus/arbitrated decisions
+      (via DB flags if present, else via logs-based finals content match)
     """
+    abs_obj = get_abstract_by_id(pmid)
+    if not abs_obj:
+        return None
+
+    # Build a set of tuples for finals from logs
+    finals_logs = aggregate_final_decisions_for_pmid(pmid)
+    finals_keys = set()
+    for fl in finals_logs:
+        try:
+            si = int(fl.get("sentence_idx") or fl.get("sentence_index") or -1)
+        except Exception:
+            si = -1
+        tpl = (
+            str(fl.get("subject") or "").strip(),
+            str(fl.get("subject_type") or "").strip(),
+            str(fl.get("predicate") or "").strip(),
+            str(fl.get("object") or "").strip(),
+            str(fl.get("object_type") or "").strip(),
+            bool(fl.get("negation", False)),
+            si,
+        )
+        finals_keys.add(tpl)
+
+    # Filter assertions within sentence_results
+    sr = abs_obj.get("sentence_results") or []
+    new_sr: List[Dict[str, Any]] = []
+    for idx, s in enumerate(sr, 1):
+        assertions = s.get("assertions") or []
+        kept: List[Dict[str, Any]] = []
+        for a in assertions:
+            # Prefer DB flags if present
+            if a.get("final_status") == "consensus" and a.get("final_decision") in ("accept", "add"):
+                kept.append(a)
+                continue
+            # Else fallback to logs-based finals match
+            tpl = (
+                str(a.get("subject") or "").strip(),
+                str(a.get("subject_type") or "").strip(),
+                str(a.get("predicate") or "").strip(),
+                str(a.get("object") or "").strip(),
+                str(a.get("object_type") or "").strip(),
+                bool(a.get("negation", False)),
+                int(s.get("sentence_index") or idx),
+            )
+            if tpl in finals_keys:
+                kept.append(a)
+        new_sr.append({ **s, "assertions": kept })
+
+    abs_obj["sentence_results"] = new_sr
+    # Maintain sentence_count
+    abs_obj["sentence_count"] = len(new_sr)
+    # Remove any transient DB/internal fields if present
+    try:
+        abs_obj.pop("_id", None)
+    except Exception:
+        pass
+    return abs_obj
+
+
+def export_final_consensus(out_path: Optional[str | Path] = None) -> tuple[int, Path]:
+    """Export all PMIDs' final decisions to JSONL (one line per abstract)."""
     raw = _load_raw_logs()
     # Authority is DB; union with logs for completeness
     try:
@@ -413,19 +476,20 @@ def export_final_consensus(out_path: Optional[str | Path] = None) -> tuple[int, 
     except Exception:
         pmids = _pmids_from_logs(raw)
 
-    finals: List[Dict[str, Any]] = []
-    for pid in pmids:
-        finals.extend(aggregate_final_decisions_for_pmid(pid))
-
     path = Path(out_path or FINAL_EXPORT_PATH)
     path.parent.mkdir(parents=True, exist_ok=True)
 
+    written = 0
     with path.open("w", encoding="utf-8") as f:
-        for rec in finals:
-            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        for pid in pmids:
+            obj = build_export_abstract(pid)
+            if not obj:
+                continue
+            f.write(json.dumps(obj, ensure_ascii=False) + "\n")
+            written += 1
 
-    logger.info("Exported %d final consensus records to %s", len(finals), str(path))
-    return len(finals), path
+    logger.info("Exported %d abstracts with final consensus to %s", written, str(path))
+    return written, path
 
 
 def export_summary_to_json(pmid: str, out_path: str) -> bool:

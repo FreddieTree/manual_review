@@ -16,6 +16,7 @@ import Select from "../components/ui/Select";
 import Badge from "../components/ui/Badge";
 import { isPerfectMatch, deriveOverallDecision } from "../utils";
 import { getVocab } from "../api/meta";
+import { useUser } from "../hooks/useUser";
 
 const STATUS = {
   LOADING: "loading",
@@ -28,6 +29,8 @@ const STATUS = {
  * ReviewPage - optimized, robust, A11y-friendly.
  */
 function ReviewPageImpl(_, ref) {
+  const { user } = useUser();
+  const draftUserKey = (user?.email || "anon").toLowerCase();
   const [abstract, setAbstract] = useState(null);
   const [reviewStatesMap, setReviewStatesMap] = useState({});
   const [showAddFor, setShowAddFor] = useState({}); // sentence_index -> boolean
@@ -73,21 +76,21 @@ function ReviewPageImpl(_, ref) {
       const resp = await getAssignedAbstract();
       if (reqIdRef.current !== id) return; // 过期请求
 
-      // 兼容 Response 或 直接对象
-      let parsed = resp;
-      try {
-        if (resp && typeof resp.json === "function") parsed = await resp.json();
-      } catch (_) { }
+      // resp is already unwrapped data from our API client
+      const parsed = resp;
+
+      // If backend indicates no_more_tasks, redirect immediately
+      if (parsed?.no_more_tasks || parsed?.data?.no_more_tasks) {
+        window.location.assign("/no_more_tasks");
+        return;
+      }
 
       // 支持 { abstract: {...} } 或 直接扁平 {...}
       const raw = parsed?.abstract ?? parsed;
-      if (!raw) {
-        // Handle no more tasks contract
-        if (parsed?.no_more_tasks || parsed?.data?.no_more_tasks) {
-          window.location.assign("/no_more_tasks");
-          return;
-        }
-        throw new Error("No assigned abstract.");
+      // Defensive: if payload does not look like an abstract (missing pmid), treat as no tasks
+      if (!raw || !raw.pmid) {
+        window.location.assign("/no_more_tasks");
+        return;
       }
       const a = { ...raw };
 
@@ -118,7 +121,7 @@ function ReviewPageImpl(_, ref) {
             return (
               existed || {
                 decision: "uncertain",
-                comment: ass.comment || "",
+                comment: "",
                 isModified: false,
               }
             );
@@ -133,12 +136,8 @@ function ReviewPageImpl(_, ref) {
       // eslint-disable-next-line no-console
       console.error("loadAbstract error:", err);
       if (reqIdRef.current !== id) return;
-      setStatusType(STATUS.ERROR);
-      const message =
-        typeof err === "string"
-          ? err
-          : err?.message || "Failed to load abstract.";
-      setStatusMsg(message);
+      // On network/API error, fall back to no_tasks instead of showing a template randomly
+      window.location.assign("/no_more_tasks");
     }
   }, []);
 
@@ -206,10 +205,10 @@ function ReviewPageImpl(_, ref) {
     return () => window.removeEventListener("beforeunload", handler);
   }, [hasUnsavedChanges, submitting]);
 
-  // Draft restore once per abstract (1h TTL)
+  // Draft restore once per abstract (1h TTL), scoped per reviewer
   useEffect(() => {
     if (!abstract?.pmid) return;
-    const key = `draft:${abstract.pmid}`;
+    const key = `draft:${draftUserKey}:${abstract.pmid}`;
     try {
       const raw = localStorage.getItem(key);
       if (raw) {
@@ -227,12 +226,12 @@ function ReviewPageImpl(_, ref) {
         }
       }
     } catch {}
-  }, [abstract?.pmid]);
+  }, [abstract?.pmid, draftUserKey]);
 
-  // Draft auto-save interval (no state resets here)
+  // Draft auto-save interval (no state resets here), scoped per reviewer
   useEffect(() => {
     if (!abstract?.pmid) return () => {};
-    const key = `draft:${abstract.pmid}`;
+    const key = `draft:${draftUserKey}:${abstract.pmid}`;
     const iv = setInterval(() => {
       try {
         const snapshot = {
@@ -245,7 +244,7 @@ function ReviewPageImpl(_, ref) {
       } catch {}
     }, 15000);
     return () => clearInterval(iv);
-  }, [abstract?.pmid, abstract?.sentence_results, reviewStatesMap]);
+  }, [abstract?.pmid, abstract?.sentence_results, reviewStatesMap, draftUserKey]);
 
   /* ------------------------------- Mutators ------------------------------- */
 
