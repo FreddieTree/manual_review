@@ -83,7 +83,7 @@ class _HolderList(list):
 # -----------------------------------------------------------------------------
 
 def _cleanup_expired_locked(current_time: Optional[float] = None) -> None:
-    """Assume _LOCK is held. Expire stale reviewer locks."""
+    """Assume _LOCK is held. Expire stale reviewer locks and sync DB TTL doc."""
     if current_time is None:
         current_time = _now()
     expired_pmids: List[str] = []
@@ -106,8 +106,21 @@ def _cleanup_expired_locked(current_time: Optional[float] = None) -> None:
                         entry["released_at"] = current_time
                         break
                 reviewers.pop(email, None)
-        if not reviewers:
-            expired_pmids.append(pmid)
+        # Sync DB doc for this pmid after pruning
+        try:
+            if db is not None:
+                if reviewers:
+                    expire_at = current_time + _DEFAULT_TIMEOUT_SECONDS
+                    db["locks"].update_one(
+                        {"pmid": pmid},
+                        {"$set": {"pmid": pmid, "expire_at": expire_at, "reviewers": list(reviewers.keys())}},
+                        upsert=True,
+                    )
+                else:
+                    expired_pmids.append(pmid)
+                    db["locks"].delete_one({"pmid": pmid})
+        except Exception:
+            pass
 
     for pmid in expired_pmids:
         logger.debug("Clearing empty lock record for abstract %s", pmid)
@@ -376,7 +389,7 @@ def assign_abstract_to_reviewer(
 
 
 def release_assignment(email: str, pmid: str) -> bool:
-    """Explicitly release a reviewer's lock on a given abstract."""
+    """Explicitly release a reviewer's lock on a given abstract and sync DB TTL doc."""
     email = (email or "").lower().strip()
     pmid = str(pmid or "")
     if not email or not pmid:
@@ -385,6 +398,12 @@ def release_assignment(email: str, pmid: str) -> bool:
     with _LOCK:
         lock = _LOCKS.get(pmid)
         if not lock:
+            # Also clear db TTL lock if present and no in-memory lock exists
+            try:
+                if db is not None:
+                    db["locks"].delete_one({"pmid": pmid})
+            except Exception:
+                pass
             return False
 
         reviewers: Dict[str, float] = lock.get("reviewers", {})
@@ -399,6 +418,20 @@ def release_assignment(email: str, pmid: str) -> bool:
                 break
 
         reviewers.pop(email, None)
+        # Persist TTL doc accordingly
+        try:
+            if db is not None:
+                if reviewers:
+                    db["locks"].update_one(
+                        {"pmid": pmid},
+                        {"$set": {"pmid": pmid, "expire_at": _now() + _DEFAULT_TIMEOUT_SECONDS, "reviewers": list(reviewers.keys())}},
+                        upsert=True,
+                    )
+                else:
+                    db["locks"].delete_one({"pmid": pmid})
+        except Exception:
+            pass
+
         if not reviewers:
             _LOCKS.pop(pmid, None)
             logger.info("Released last reviewer %s from abstract %s; cleared lock", email, pmid)
