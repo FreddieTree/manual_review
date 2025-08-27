@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Tuple, Iterable
 from ..config import REVIEW_LOGS_PATH, FINAL_EXPORT_PATH, get_logger
 from ..domain.assertions import make_assertion_id
 from ..models.abstracts import get_all_pmids, get_abstract_by_id
+from ..models.logs import load_logs  # Prefer Mongo-backed loader
 
 logger = get_logger("services.aggregation")
 
@@ -70,34 +71,23 @@ def invalidate_cache() -> None:
 
 
 def _load_raw_logs() -> List[Dict[str, Any]]:
-    """Load raw JSONL logs with mtime cache; skip malformed lines."""
+    """Load raw logs using the centralized loader which prefers Mongo.
+
+    This change ensures logs survive backend redeploys: the loader reads from
+    the Mongo `logs` collection when available, falling back to the local file
+    only for dev. We keep a lightweight cache key using the file mtime so
+    existing invalidation continues to work for local-file scenarios.
+    """
     global _cached_log_mtime, _cached_parsed_logs
     with _log_file_lock:
         current_mtime = _get_log_file_mtime()
         if _cached_parsed_logs is not None and _cached_log_mtime == current_mtime:
             return _cached_parsed_logs
 
-        logs: List[Dict[str, Any]] = []
-        path = _log_path()
-        if not path.exists():
-            _cached_log_mtime = current_mtime
-            _cached_parsed_logs = logs
-            return logs
-
         try:
-            with path.open("r", encoding="utf-8") as f:
-                for line in f:
-                    s = line.strip()
-                    if not s:
-                        continue
-                    try:
-                        obj = json.loads(s)
-                        if isinstance(obj, dict):
-                            logs.append(obj)
-                    except json.JSONDecodeError:
-                        continue
+            logs = load_logs()  # Already returns a list[dict]
         except Exception:
-            logger.exception("Failed reading logs from %s", str(path))
+            logger.exception("Central log loader failed; returning empty logs")
             logs = []
 
         _cached_log_mtime = current_mtime
