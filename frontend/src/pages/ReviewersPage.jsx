@@ -48,6 +48,9 @@ const TEST_SEED = [
 ];
 const isTestEnv = typeof import.meta !== "undefined" && import.meta.env?.MODE === "test";
 
+// Default email domain to append when admin types only the prefix
+const EMAIL_DOMAIN = (import.meta.env?.VITE_EMAIL_DOMAIN || "bristol.ac.uk").trim();
+
 export default function ReviewersPage() {
     const [reviewers, setReviewers] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -141,14 +144,17 @@ export default function ReviewersPage() {
         setSuccessMsg("");
 
         const name = (form.name || "").trim();
-        const email = normalizeEmail(form.email);
-
+        let emailInput = normalizeEmail(form.email);
         if (!name) {
             setError("Name is required.");
             return;
         }
-        if (!email || !isValidEmail(email)) {
-            setError("Valid email is required.");
+        // Allow prefix-only input and auto-append domain
+        if (!emailInput.includes("@")) {
+            emailInput = `${emailInput}@${EMAIL_DOMAIN}`;
+        }
+        if (!isValidEmail(emailInput)) {
+            setError("Valid email or prefix is required.");
             return;
         }
 
@@ -157,7 +163,7 @@ export default function ReviewersPage() {
                 await http("PUT", `/api/reviewers/${encodeURIComponent(editingEmail)}`, { name });
                 setSuccessMsg("Reviewer updated.");
             } else {
-                await http("POST", "/api/reviewers", { name, email });
+                await http("POST", "/api/reviewers", { name, email: emailInput });
                 setSuccessMsg("Reviewer added.");
             }
             resetForm();
@@ -286,17 +292,19 @@ export default function ReviewersPage() {
                         />
                     </div>
                     <div className="col-span-1">
-                        <label className="block text-xs font-semibold mb-1" htmlFor="email">Email</label>
-                        <input
-                            id="email"
-                            type="email"
-                            placeholder="reviewer@bristol.ac.uk"
-                            value={form.email}
-                            onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                            className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
-                            required
-                            disabled={!!editingEmail}
-                        />
+                        <label className="block text-xs font-semibold mb-1" htmlFor="email">Email or prefix</label>
+                        <div className="flex items-center gap-2">
+                            <input
+                                id="email"
+                                type="text"
+                                placeholder={`prefix@${EMAIL_DOMAIN} or prefix only`}
+                                value={form.email}
+                                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                                className="w-full border rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                                required
+                                disabled={!!editingEmail}
+                            />
+                        </div>
                     </div>
                     <div className="col-span-1 flex gap-2">
                         <button

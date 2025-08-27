@@ -30,10 +30,6 @@ def _resp(
     meta: Optional[Dict[str, Any]] = None,
     status: Optional[int] = None,
 ) -> Tuple[Any, int]:
-    """
-    统一响应：返回 (jsonify(payload), status)
-    - 若未显式给 status，则 success=True -> 200，否则 -> 400
-    """
     payload: Dict[str, Any] = {"success": success}
     if data is not None:
         payload["data"] = data
@@ -74,6 +70,17 @@ def _email_allowed(email: str) -> bool:
         allowed_domains=EMAIL_ALLOWED_DOMAINS,
     )
 
+# Auto-append domain if admin submits a prefix only
+_DEF_DOMAIN = EMAIL_ALLOWED_DOMAINS[0] if EMAIL_ALLOWED_DOMAINS else "bristol.ac.uk"
+
+def _coerce_email(email_or_prefix: str) -> str:
+    e = (email_or_prefix or "").strip().lower()
+    if not e:
+        return ""
+    if "@" in e:
+        return e
+    return f"{e}@{_DEF_DOMAIN}"
+
 # -------------------- Routes --------------------
 
 @reviewer_api.route("", methods=["GET"])
@@ -81,33 +88,23 @@ def _email_allowed(email: str) -> bool:
 def list_reviewers():
     """
     List reviewers with search, pagination, optional sorting.
-    Query params:
-      - q: fuzzy match on name/email
-      - page: 1-based
-      - per_page: items per page (5..200)
-      - sort: field to sort by (email/name), prefix '-' for desc
-      - active: optional bool filter
     """
     try:
         q = (request.args.get("q", "") or "").strip().lower()
-
         try:
             page = max(1, int(request.args.get("page", 1)))
         except (ValueError, TypeError):
             page = 1
-
         try:
             per_page = max(5, min(200, int(request.args.get("per_page", 50))))
         except (ValueError, TypeError):
             per_page = 50
-
         sort = (request.args.get("sort", "email") or "").strip()
         reverse = False
         if sort.startswith("-"):
             reverse = True
             sort = sort[1:]
         sort = sort if sort in ("email", "name") else "email"
-
         active_param = request.args.get("active")
         active_filter: Optional[bool] = None
         if active_param is not None:
@@ -115,28 +112,17 @@ def list_reviewers():
             active_filter = val in ("1", "true", "yes", "on")
 
         items: List[Dict[str, Any]] = get_all_reviewers() or []
-
-        # filter by q
         if q:
-            items = [
-                r for r in items
-                if q in (r.get("name") or "").lower() or q in (r.get("email") or "").lower()
-            ]
-
-        # optional active filter
+            items = [r for r in items if q in (r.get("name") or "").lower() or q in (r.get("email") or "").lower()]
         if active_filter is not None:
             items = [r for r in items if bool(r.get("active", True)) == active_filter]
-
-        # sort
         try:
             items.sort(key=lambda r: (r.get(sort) or "").lower(), reverse=reverse)
         except Exception:
             pass
-
         total = len(items)
         start = (page - 1) * per_page
         page_items = items[start : start + per_page]
-
         meta = {
             "page": page,
             "per_page": per_page,
@@ -155,7 +141,6 @@ def list_reviewers():
 @require_admin
 def get_reviewer(email: str):
     normalized = _normalize_email(email)
-    # 查询类接口：放宽为只验证格式，不强制域名白名单，以便能查看历史遗留数据
     from_format_ok = is_valid_email(normalized, restrict_domain=False)
     if not normalized or not from_format_ok:
         return _resp(False, message="Invalid email", error_code="invalid_email", status=400)
@@ -173,7 +158,8 @@ def get_reviewer(email: str):
 @require_admin
 def add_reviewer_route():
     payload = request.get_json(silent=True) or {}
-    email = _normalize_email(payload.get("email", ""))
+    email_input = (payload.get("email", "") or "").strip()
+    email = _normalize_email(_coerce_email(email_input))
     name = (payload.get("name") or "").strip()
     active = bool(payload.get("active", True))
     role = _sanitize_role(payload.get("role"))
@@ -182,14 +168,12 @@ def add_reviewer_route():
     if not name:
         return _resp(False, message="Name required", error_code="missing_name", status=400)
     if not email or not _email_allowed(email):
-        # 关键：启用域名白名单，失败 -> 400
         return _resp(False, message="Invalid email", error_code="invalid_email", status=400)
 
     try:
         _add_reviewer(email=email, name=name, active=active, role=role, note=note)
-        actor = session.get("email", "unknown")
+        actor = session.get("email", "admin")
         logger.info("Reviewer %s added by %s", email, actor)
-        # audit log
         try:
             log_review_action({
                 "action": "admin_whitelist_add",
@@ -201,7 +185,6 @@ def add_reviewer_route():
             pass
         return _resp(True, data={"email": email}, message="Reviewer added")
     except ValueError as e:
-        # reviewer already exists / invalid field
         return _resp(False, message=str(e), error_code="conflict", status=409)
     except Exception:
         logger.exception("Failed to add reviewer %s", email)
@@ -213,12 +196,9 @@ def add_reviewer_route():
 def update_reviewer_route(email: str):
     payload = request.get_json(silent=True) or {}
     normalized = _normalize_email(email)
-
-    # 路径变量 email 做基本格式校验（不强制域名白名单）
     if not normalized or not is_valid_email(normalized, restrict_domain=False):
         return _resp(False, message="Invalid reviewer email", error_code="invalid_email", status=400)
 
-    # —— 关键修复：更新前先判断记录是否存在，不存在 -> 404 —— #
     try:
         existing = _get_reviewer_by_email(normalized)
     except Exception:
@@ -236,12 +216,10 @@ def update_reviewer_route(email: str):
     if "active" in payload:
         update_fields["active"] = bool(payload.get("active"))
     if "role" in payload:
-        # Admin roles cannot be escalated via API; whitelist-only reviewers here
         update_fields["role"] = "reviewer"
     if "note" in payload:
         update_fields["note"] = str(payload.get("note", "") or "")
 
-    # 若请求中“试图”修改邮箱（通常不支持），先做白名单校验；随后仍交由模型层处理/拒绝
     new_email = _normalize_email(payload.get("email"))
     if new_email and new_email != normalized:
         if not _email_allowed(new_email):
@@ -252,7 +230,7 @@ def update_reviewer_route(email: str):
 
     try:
         _update_reviewer(email=normalized, fields=update_fields)
-        actor = session.get("email", "unknown")
+        actor = session.get("email", "admin")
         logger.info("Reviewer %s updated by %s (%s)", normalized, actor, update_fields)
         try:
             log_review_action({
@@ -266,7 +244,6 @@ def update_reviewer_route(email: str):
             pass
         return _resp(True, data={"email": normalized}, message="Reviewer updated")
     except ValueError as e:
-        # 其他业务性错误 -> 400
         return _resp(False, message=str(e), error_code="bad_request", status=400)
     except Exception:
         logger.exception("Failed to update reviewer %s", normalized)
@@ -277,12 +254,11 @@ def update_reviewer_route(email: str):
 @require_admin
 def delete_reviewer_route(email: str):
     normalized = _normalize_email(email)
-    # 删除路由：允许仅做基本格式校验
     if not normalized or not is_valid_email(normalized, restrict_domain=False):
         return _resp(False, message="Invalid email", error_code="invalid_email", status=400)
     try:
         _delete_reviewer(email=normalized)
-        actor = session.get("email", "unknown")
+        actor = session.get("email", "admin")
         logger.info("Reviewer %s deleted by %s", normalized, actor)
         try:
             log_review_action({

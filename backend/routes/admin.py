@@ -14,6 +14,10 @@ from backend.config import (
 )
 from backend.services.export_service import export_passed_assertions
 from backend.models.db import abstracts_col
+try:
+    from backend.models.db import reviewers_col  # type: ignore
+except Exception:
+    reviewers_col = None  # type: ignore
 from backend.services.import_service import start_import_job, get_import_progress
 from backend.models.logs import log_review_action
 from backend.services.stats import compute_platform_analytics
@@ -48,15 +52,21 @@ def admin_stats():
 
     total_reviewers = 0
     try:
-        p = Path(REVIEWERS_JSON)
-        if p.exists():
-            data = json.loads(p.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                total_reviewers = len(data)
-            elif isinstance(data, dict) and isinstance(data.get("reviewers"), list):
-                total_reviewers = len(data["reviewers"])
+        if reviewers_col is not None:
+            total_reviewers = int(reviewers_col.count_documents({}))
+        else:
+            raise RuntimeError("no reviewers_col")
     except Exception:
-        pass
+        try:
+            p = Path(REVIEWERS_JSON)
+            if p.exists():
+                data = json.loads(p.read_text(encoding="utf-8"))
+                if isinstance(data, list):
+                    total_reviewers = len(data)
+                elif isinstance(data, dict) and isinstance(data.get("reviewers"), list):
+                    total_reviewers = len(data["reviewers"])
+        except Exception:
+            pass
 
     # 如需真实统计可解析 REVIEW_LOGS_PATH；这里给出占位
     reviewed_count = 0
