@@ -12,13 +12,13 @@ from pymongo.errors import PyMongoError
 # Mongo configuration via environment variables only.
 # Example:
 #   export MONGO_URI="mongodb+srv://USER:PASS@host/db?options"
-#   export MONGO_DB_NAME="assertion_review"
+#   export MONGO_DB_NAME="manual_review"
 
 MONGO_URI = os.environ.get("MONGO_URI")
 if not MONGO_URI:
     raise RuntimeError("MONGO_URI is required. Please set it in your environment (e.g., export MONGO_URI=... or put it in a .env file).")
 
-DB_NAME = os.environ.get("MONGO_DB_NAME", "assertion_review")
+DB_NAME = os.environ.get("MONGO_DB_NAME", "manual_review")
 
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]

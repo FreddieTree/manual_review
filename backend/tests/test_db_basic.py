@@ -10,7 +10,7 @@ logging.getLogger("urllib3").setLevel(logging.WARNING)
 MONGO_URI = os.getenv(
     "MONGO_URI", "mongodb+srv://fredyu428:8cFD038spAQEDUUM@cluster0.ubmtrne.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 )
-DB_NAME = "assertion_review"
+DB_NAME = "manual_review"
 
 client = MongoClient(MONGO_URI)
 db = client[DB_NAME]
