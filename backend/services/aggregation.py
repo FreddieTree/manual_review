@@ -313,6 +313,8 @@ def get_detailed_assertion_summary(
             "last_updated": last,
             "reviewers": reviewers,
             "logs": sorted(logs, key=_ts),
+            # Mark groups that only contain "add" actions so callers can exclude them from status charts
+            "is_add_only": bool(counter) and set(counter.keys()).issubset({Action.ADD.value}),
         }
         if status == ConsensusResult.CONFLICT:
             reasons = []

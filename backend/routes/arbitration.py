@@ -57,7 +57,13 @@ def api_arbitration_queue():
             include_pending=include_pending,
             limit=limit_int,
         )
-        return _resp(True, data={"items": queue})
+        # 附带一个统计摘要，便于前端徽标显示
+        summary = {
+            "total": len(queue),
+            "conflicts": sum(1 for it in queue if (it.get("status") == "conflict")),
+            "pending": sum(1 for it in queue if (it.get("status") == "pending")),
+        }
+        return _resp(True, data={"items": queue, "summary": summary})
     except Exception as e:
         # 保证接口稳定返回，但记录详细日志便于排查
         current_app.logger.exception("Failed to build arbitration queue: %s", e)

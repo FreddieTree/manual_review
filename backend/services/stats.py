@@ -71,6 +71,9 @@ def compute_platform_analytics(reviewer_email: str | None = None) -> Dict[str, A
         try:
             detailed = get_detailed_assertion_summary(pid)
             for item in detailed:
+                # Skip pure add-only groups (not yet reviewed)
+                if item.get("is_add_only"):
+                    continue
                 st = item.get("consensus_status")
                 if st in status_counts:
                     status_counts[st] += 1

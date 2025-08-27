@@ -94,6 +94,12 @@ def get_arbitration_queue(
 
             status = consensus_decision(logs)
 
+            # 忽略仅包含 add 的生命周期（尚未开始评审，不应进入仲裁）
+            actions = [_norm_action(l.get("action")) for l in logs if l.get("action")]
+            counts = dict(Counter(actions))
+            if counts and set(counts.keys()).issubset({"add"}):
+                continue
+
             if only_conflicts:
                 if status != ConsensusResult.CONFLICT:
                     # 可选择把未决/不确定也塞入
@@ -106,8 +112,7 @@ def get_arbitration_queue(
                     continue
 
             # 统计 & 排序日志
-            actions = [_norm_action(l.get("action")) for l in logs if l.get("action")]
-            counts = dict(Counter(actions))
+            # actions/counts 已在上面计算
             logs_sorted = sorted(logs, key=_ts)
 
             # 简单冲突原因（可选）

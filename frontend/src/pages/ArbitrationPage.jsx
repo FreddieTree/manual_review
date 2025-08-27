@@ -6,6 +6,7 @@ import ConfirmModal from "../components/ConfirmModal";
 
 function ArbitrationPageImpl(_, ref) {
     const [queue, setQueue] = useState([]);
+    const [summary, setSummary] = useState({ total: 0, conflicts: 0, pending: 0 });
     const [loading, setLoading] = useState(true);
     const [actioning, setActioning] = useState(null); // assertion_id 正在处理
     const [error, setError] = useState("");
@@ -27,6 +28,7 @@ function ArbitrationPageImpl(_, ref) {
                 { unwrap: "data" }
             );
             const items = Array.isArray(data?.items) ? data.items : [];
+            const sum = data?.summary && typeof data.summary === 'object' ? data.summary : { total: items.length, conflicts: items.length, pending: 0 };
             const mapped = items.map((it) => {
                 const logs = Array.isArray(it.logs) ? it.logs : [];
                 const last = logs[logs.length - 1] || {};
@@ -42,6 +44,7 @@ function ArbitrationPageImpl(_, ref) {
                 };
             });
             setQueue(mapped);
+            setSummary(sum);
         } catch (err) {
             setQueue([]);
             setError(err?.message || "Failed to load arbitration queue.");
@@ -98,7 +101,7 @@ function ArbitrationPageImpl(_, ref) {
         <div ref={ref} className="min-h-screen bg-gradient-to-br from-blue-50 via-sky-50 to-blue-100 py-8 px-4">
             <div className="max-w-5xl mx-auto">
                 <Card>
-                    <Section title="Arbitration Queue" description="Admin Only">
+                    <Section title="Arbitration Queue" description={`Admin Only • Conflicts: ${summary.conflicts} • Pending: ${summary.pending}`}>
                         {loading ? (
                             <div className="py-10 text-center text-gray-400">Loading…</div>
                         ) : error ? (
